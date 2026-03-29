@@ -664,21 +664,24 @@ Git context:
 
 Apply code changes directly in the repository.
 
-Then overwrite this file with the updated implementation report:
+Then update the implementation report by **appending** a new fix-round section to the existing file (do NOT overwrite or erase previous rounds):
 - {implementation_report_path(ticket).as_posix()}
 
-The report must include:
-1. Summary of changes
-2. Files modified
-3. Key decisions
-4. Assumptions followed
-5. Commands/tests you ran
-6. Review Issues Addressed
-7. QA Issues Addressed
+Steps:
+1. Read the current content of implementation_report.md to determine how many fix rounds exist already.
+2. Append a new section at the bottom using this heading (increment the round number accordingly):
+   `## Fix Round N — <short description>`
+3. The new section must include:
+   - Summary of changes made in this round
+   - Files modified
+   - Key decisions
+   - Commands/tests you ran
+   - Review Issues Addressed (reference each issue explicitly)
+   - QA Issues Addressed (reference each issue explicitly)
 
 Important:
+- Preserve all existing content in implementation_report.md — only append.
 - Make the code changes directly in the repo.
-- Update implementation_report.md directly.
 - Be explicit about how each critical issue was fixed.
 - If QA identified missing tests, add them when feasible and report them clearly.
 """
@@ -688,7 +691,7 @@ Important:
     complete_stage(ticket, "dev_fix_prepare", "Generated dev-fix prompt.")
     print(f"[OK] Wrote {dev_fix_prompt_path(ticket)}")
     print(
-        "[NEXT] Paste this prompt into Claude/Copilot. Let it fix the issues and update implementation_report.md, then run next --run."
+        "[NEXT] Paste this prompt into Claude/Copilot. Let it fix the issues and append a new fix-round section to implementation_report.md, then run next --run."
     )
 
 
