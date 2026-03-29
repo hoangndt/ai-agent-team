@@ -1,59 +1,153 @@
 # AI Dev Team Operating Guide
 
-This repository uses a structured AI workflow located in `.ai/runs/<TICKET>/`.
+This repository uses a structured AI workflow managed by `.ai/bin/ai_run.py`.
 
-You (Claude) are part of a multi-stage agent workflow:
+You (Claude) are invoked at specific stages of a ticket workflow. Each stage generates a prompt file that you read and act on, then write output files directly to the repository.
 
-- Architect
-- Developer
-- Reviewer
-- QA
+---
 
-Each stage is invoked via a prompt file in:
-.ai/runs/<TICKET>/prompts/
+# 🗂️ Directory Structure
+
+```
+.ai/
+  bin/
+    ai_run.py              # Workflow runner
+  agents/
+    architect.md           # Role instructions for Architect
+    developer.md           # Role instructions for Developer
+    reviewer.md            # Role instructions for Reviewer
+    qa.md                  # Role instructions for QA
+  templates/               # Optional shared templates
+  project_config.json      # Project name, domain config, base branch, skills
+  runs/
+    <TICKET>/
+      status.json          # Stage tracker (auto-managed)
+      input/
+        input.md           # Initial requirement
+      architect/
+        architect_prompt.md
+        task_spec.md
+        design_note.md
+        acceptance_criteria.md
+        assumptions.md
+      dev/
+        dev_prompt.md
+        implementation_report.md
+      fix/
+        dev_fix_prompt.md
+        review_fix_context.md  # Auto-generated from review_report.json
+        qa_fix_context.md      # Auto-generated from qa_report.json
+        previous_review_report.json
+        previous_qa_report.json
+      review/
+        review_prompt.md
+        review_report.json
+      qa/
+        qa_prompt.md
+        qa_report.json
+```
 
 ---
 
 # 🔁 Core Workflow
 
-For each ticket:
+Each stage follows a **prepare → act → complete** pattern:
 
-1. Read input and artifacts from:
-   .ai/runs/<TICKET>/
+1. **prepare** — `ai_run.py` generates a prompt file
+2. **act** — You (Claude) read the prompt file and write output files directly to the repo
+3. **complete** — `ai_run.py` verifies that required output files are non-empty
 
-2. Perform your assigned role (Architect / Developer / Reviewer / QA)
+Use `python .ai/bin/ai_run.py next <TICKET> --run` to auto-advance through stages.
 
-3. Write results directly to the required output files in:
-   .ai/runs/<TICKET>/
+## Stages in order
 
-4. Do NOT return final output only in chat if file output is requested
+| Step               | CLI command                     | Your job                                                       |
+| ------------------ | ------------------------------- | -------------------------------------------------------------- |
+| Init               | `init <TICKET> "<requirement>"` | (automated)                                                    |
+| Architect Prepare  | `architect-prepare <TICKET>`    | (generates prompt)                                             |
+| **Architect**      | _(paste prompt)_                | Write task_spec, design_note, acceptance_criteria, assumptions |
+| Architect Complete | `architect-complete <TICKET>`   | (verifies files)                                               |
+| Dev Prepare        | `dev-prepare <TICKET>`          | (generates prompt)                                             |
+| **Developer**      | _(paste prompt)_                | Implement code, write implementation_report.md                 |
+| Dev Complete       | `dev-complete <TICKET>`         | (verifies files)                                               |
+| Review Prepare     | `review-prepare <TICKET>`       | (generates prompt)                                             |
+| **Reviewer**       | _(paste prompt)_                | Write review_report.json                                       |
+| Review Complete    | `review-complete <TICKET>`      | (verifies + builds fix context)                                |
+| QA Prepare         | `qa-prepare <TICKET>`           | (generates prompt)                                             |
+| **QA**             | _(paste prompt)_                | Write qa_report.json                                           |
+| QA Complete        | `qa-complete <TICKET>`          | (verifies + builds qa fix context)                             |
 
 ---
 
-# 📂 File Conventions
+# 🔄 Fix Loop
 
-## Input files
+If the Reviewer returns `request_changes` or `block`, or QA returns `fail`, the workflow enters a fix cycle:
 
-- input.md
-- task_spec.md
-- design_note.md
-- acceptance_criteria.md
-- assumptions.md
-- implementation_report.md
-- changed_files.txt
-- git_diff.patch
+| Step                     | CLI command                 | Your job                                      |
+| ------------------------ | --------------------------- | --------------------------------------------- |
+| Dev Fix Prepare          | `dev-fix-prepare <TICKET>`  | (generates fix prompt with review/qa context) |
+| **Developer**            | _(paste prompt)_            | Fix issues, update implementation_report.md   |
+| Dev Fix Complete         | `dev-fix-complete <TICKET>` | (verifies report)                             |
+| → back to Review Prepare |                             |                                               |
 
-## Output files
+Previous reports are archived to `fix/previous_review_report.json` and `fix/previous_qa_report.json`. Follow-up reviews check whether prior issues were resolved.
 
-- task_spec.md
-- design_note.md
-- acceptance_criteria.md
-- assumptions.md
-- implementation_report.md
-- review_report.json
-- qa_report.json
+The workflow is **done** when review decision is `approve` and QA decision is `pass`.
+
+---
+
+# 📂 File Responsibilities
+
+## Architect writes
+
+- `architect/task_spec.md` — technical restatement of requirement, scope, impacted modules
+- `architect/design_note.md` — implementation approach, data/API flow, trade-offs
+- `architect/acceptance_criteria.md` — testable success, validation, and failure cases
+- `architect/assumptions.md` — explicit unknowns and ambiguities
+
+## Developer writes
+
+- Code changes directly in the repo
+- `dev/implementation_report.md` — summary, files modified, decisions, tests run
+
+## Reviewer writes
+
+- `review/review_report.json` — strict JSON:
+  ```json
+  {
+    "decision": "approve|request_changes|block",
+    "issues": [
+      { "severity": "high|medium|low", "file": "...", "message": "..." }
+    ],
+    "summary": "..."
+  }
+  ```
+
+## QA writes
+
+- `qa/qa_report.json` — strict JSON:
+  ```json
+  {
+    "decision": "pass|fail",
+    "missing_tests": [],
+    "risks": [],
+    "summary": "..."
+  }
+  ```
 
 Always overwrite target files with the latest correct version.
+
+---
+
+# ⚙️ Configuration
+
+`.ai/project_config.json` controls:
+
+- `project_name` — used in prompts
+- `git.base_branch` — branch to diff against (default: `main`)
+- `default_domain` — fallback domain if not specified at init
+- `domains.<name>.paths` — relevant paths shown in project context
+- `domains.<name>.skills.<role>` — list of skill file paths loaded into role prompts
 
 ---
 
@@ -73,22 +167,20 @@ Always overwrite target files with the latest correct version.
 
 ## 3. Be file-driven, not chat-driven
 
-- Read from files
-- Write to files
-- Treat files as the source of truth
+- Read from the prompt file
+- Write output directly to the specified files
+- Do NOT return final output only in chat when file output is requested
 
 ## 4. Be explicit with uncertainty
 
-If something is unclear:
-
 - Do NOT guess silently
-- Record it in assumptions.md (Architect)
-- Or mention it in report/review/qa output
+- Record unknowns in `assumptions.md` (Architect)
+- Or note them in the report/review/qa output
 
 ## 5. Keep output structured
 
 - Markdown for specs and reports
-- Strict JSON for review and QA
+- Strict JSON for `review_report.json` and `qa_report.json`
 
 ---
 
@@ -104,13 +196,13 @@ If something is unclear:
 
 - Implement minimal, correct solution
 - Avoid over-engineering
-- Keep changes localized
+- Keep changes localized to the ticket
 
 ## Reviewer
 
 - Be strict and critical
-- Focus on correctness and risk
-- Tie feedback to acceptance criteria
+- Focus on correctness, risk, and acceptance criteria
+- In follow-up reviews: verify prior issues are resolved, do not repeat fixed ones
 
 ## QA
 
