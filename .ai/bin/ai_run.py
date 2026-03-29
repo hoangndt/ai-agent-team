@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import subprocess
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional
@@ -151,7 +153,9 @@ def ensure_ticket_dirs(ticket: str) -> None:
 def load_status(ticket: str) -> Dict:
     sf = status_file(ticket)
     if not sf.exists():
-        raise FileNotFoundError(f"Status file not found for ticket '{ticket}'. Run init first.")
+        raise FileNotFoundError(
+            f"Status file not found for ticket '{ticket}'. Run init first."
+        )
     return json.loads(sf.read_text(encoding="utf-8"))
 
 
@@ -470,7 +474,9 @@ Important:
     set_artifact(ticket, "architect_prompt", architect_prompt_path(ticket))
     complete_stage(ticket, "architect_prepare", "Generated architect prompt.")
     print(f"[OK] Wrote {architect_prompt_path(ticket)}")
-    print("[NEXT] Paste this prompt into Claude/Copilot. Let it write the 4 files directly, then run next --run.")
+    print(
+        "[NEXT] Paste this prompt into Claude/Copilot. Let it write the 4 files directly, then run next --run."
+    )
 
 
 def architect_complete(ticket: str) -> None:
@@ -539,7 +545,9 @@ Important:
     set_artifact(ticket, "dev_prompt", dev_prompt_path(ticket))
     complete_stage(ticket, "dev_prepare", "Generated dev prompt.")
     print(f"[OK] Wrote {dev_prompt_path(ticket)}")
-    print("[NEXT] Paste this prompt into Claude/Copilot. Let it change code and write implementation_report.md, then run next --run.")
+    print(
+        "[NEXT] Paste this prompt into Claude/Copilot. Let it change code and write implementation_report.md, then run next --run."
+    )
 
 
 def archive_file(ticket: str, source: Path, archive_name: str) -> Optional[Path]:
@@ -589,12 +597,20 @@ def dev_fix_prepare(ticket: str) -> None:
     ]
     ensure_non_empty_files(core_inputs, "dev_fix_prepare", ticket)
 
-    review_exists = review_report_path(ticket).exists() and read(review_report_path(ticket)).strip()
+    review_exists = (
+        review_report_path(ticket).exists() and read(review_report_path(ticket)).strip()
+    )
     qa_exists = qa_report_path(ticket).exists() and read(qa_report_path(ticket)).strip()
 
     if not review_exists and not qa_exists:
-        fail_stage(ticket, "dev_fix_prepare", "No review_report.json or qa_report.json found for fix mode")
-        raise FileNotFoundError("No review_report.json or qa_report.json found for dev fix mode")
+        fail_stage(
+            ticket,
+            "dev_fix_prepare",
+            "No review_report.json or qa_report.json found for fix mode",
+        )
+        raise FileNotFoundError(
+            "No review_report.json or qa_report.json found for dev fix mode"
+        )
 
     extra_paths: List[Path] = []
     issue_sources: List[str] = []
@@ -620,7 +636,9 @@ def dev_fix_prepare(ticket: str) -> None:
         archived_paths.append(archived["qa"])
 
     base_branch = get_base_branch()
-    source_label = " and/or ".join(issue_sources) if issue_sources else "Review and/or QA"
+    source_label = (
+        " and/or ".join(issue_sources) if issue_sources else "Review and/or QA"
+    )
 
     task_instruction = f"""Work inside the current repository.
 
@@ -669,7 +687,9 @@ Important:
     set_artifact(ticket, "dev_fix_prompt", dev_fix_prompt_path(ticket))
     complete_stage(ticket, "dev_fix_prepare", "Generated dev-fix prompt.")
     print(f"[OK] Wrote {dev_fix_prompt_path(ticket)}")
-    print("[NEXT] Paste this prompt into Claude/Copilot. Let it fix the issues and update implementation_report.md, then run next --run.")
+    print(
+        "[NEXT] Paste this prompt into Claude/Copilot. Let it fix the issues and update implementation_report.md, then run next --run."
+    )
 
 
 def dev_complete(ticket: str) -> None:
@@ -687,7 +707,9 @@ def dev_fix_complete(ticket: str) -> None:
     update_stage(ticket, "dev_fix_complete")
     set_runner(ticket, "dev-fix-complete")
 
-    ensure_non_empty_files([implementation_report_path(ticket)], "dev_fix_complete", ticket)
+    ensure_non_empty_files(
+        [implementation_report_path(ticket)], "dev_fix_complete", ticket
+    )
     set_artifact(ticket, "implementation_report", implementation_report_path(ticket))
 
     complete_stage(ticket, "dev_fix_complete", "Fix implementation verified.")
@@ -707,12 +729,18 @@ def review_prepare(ticket: str) -> None:
     ensure_non_empty_files(required_inputs, "review_prepare", ticket)
 
     base_branch = get_base_branch()
-    followup_mode = previous_review_report_path(ticket).exists() and read(previous_review_report_path(ticket)).strip()
+    followup_mode = (
+        previous_review_report_path(ticket).exists()
+        and read(previous_review_report_path(ticket)).strip()
+    )
 
     followup_block = ""
     if followup_mode:
         extra_files = [previous_review_report_path(ticket)]
-        if review_fix_context_path(ticket).exists() and read(review_fix_context_path(ticket)).strip():
+        if (
+            review_fix_context_path(ticket).exists()
+            and read(review_fix_context_path(ticket)).strip()
+        ):
             extra_files.append(review_fix_context_path(ticket))
 
         followup_block = f"""
@@ -772,7 +800,9 @@ Important:
     set_artifact(ticket, "review_prompt", review_prompt_path(ticket))
     complete_stage(ticket, "review_prepare", "Generated review prompt.")
     print(f"[OK] Wrote {review_prompt_path(ticket)}")
-    print("[NEXT] Paste this prompt into Claude/Copilot. Let it write review_report.json directly, then run next --run.")
+    print(
+        "[NEXT] Paste this prompt into Claude/Copilot. Let it write review_report.json directly, then run next --run."
+    )
 
 
 def review_complete(ticket: str) -> None:
@@ -782,7 +812,10 @@ def review_complete(ticket: str) -> None:
     ensure_non_empty_files([review_report_path(ticket)], "review_complete", ticket)
 
     parsed = json.loads(read(review_report_path(ticket)))
-    write(review_report_path(ticket), json.dumps(parsed, indent=2, ensure_ascii=False) + "\n")
+    write(
+        review_report_path(ticket),
+        json.dumps(parsed, indent=2, ensure_ascii=False) + "\n",
+    )
     set_artifact(ticket, "review_report", review_report_path(ticket))
 
     build_fix_context(ticket)
@@ -836,7 +869,9 @@ Important:
     set_artifact(ticket, "qa_prompt", qa_prompt_path(ticket))
     complete_stage(ticket, "qa_prepare", "Generated QA prompt.")
     print(f"[OK] Wrote {qa_prompt_path(ticket)}")
-    print("[NEXT] Paste this prompt into Claude/Copilot. Let it write qa_report.json directly, then run next --run.")
+    print(
+        "[NEXT] Paste this prompt into Claude/Copilot. Let it write qa_report.json directly, then run next --run."
+    )
 
 
 def qa_complete(ticket: str) -> None:
@@ -846,7 +881,9 @@ def qa_complete(ticket: str) -> None:
     ensure_non_empty_files([qa_report_path(ticket)], "qa_complete", ticket)
 
     parsed = json.loads(read(qa_report_path(ticket)))
-    write(qa_report_path(ticket), json.dumps(parsed, indent=2, ensure_ascii=False) + "\n")
+    write(
+        qa_report_path(ticket), json.dumps(parsed, indent=2, ensure_ascii=False) + "\n"
+    )
     set_artifact(ticket, "qa_report", qa_report_path(ticket))
 
     build_qa_fix_context(ticket)
@@ -862,7 +899,9 @@ def current_outcome(ticket: str) -> Dict[str, Optional[str]]:
 
     try:
         if review_report_path(ticket).exists():
-            review_decision = json.loads(read(review_report_path(ticket))).get("decision")
+            review_decision = json.loads(read(review_report_path(ticket))).get(
+                "decision"
+            )
     except Exception:
         pass
 
@@ -883,7 +922,10 @@ def next_action(ticket: str) -> str:
     if not task_spec_path(ticket).exists() or not read(task_spec_path(ticket)).strip():
         return "architect-prepare"
 
-    if not design_note_path(ticket).exists() or not read(design_note_path(ticket)).strip():
+    if (
+        not design_note_path(ticket).exists()
+        or not read(design_note_path(ticket)).strip()
+    ):
         return "architect-complete"
 
     if current_stage == "architect_prepare":
@@ -908,14 +950,20 @@ def next_action(ticket: str) -> str:
         return "review-prepare"
 
     # Initial dev
-    if not implementation_report_path(ticket).exists() or not read(implementation_report_path(ticket)).strip():
+    if (
+        not implementation_report_path(ticket).exists()
+        or not read(implementation_report_path(ticket)).strip()
+    ):
         return "dev-prepare"
 
     if current_stage == "dev_prepare":
         return "dev-complete"
 
     # Review
-    if not review_report_path(ticket).exists() or not read(review_report_path(ticket)).strip():
+    if (
+        not review_report_path(ticket).exists()
+        or not read(review_report_path(ticket)).strip()
+    ):
         return "review-prepare"
 
     if current_stage == "review_prepare":
@@ -923,7 +971,10 @@ def next_action(ticket: str) -> str:
 
     # QA after approved review
     if outcome["review"] == "approve":
-        if not qa_report_path(ticket).exists() or not read(qa_report_path(ticket)).strip():
+        if (
+            not qa_report_path(ticket).exists()
+            or not read(qa_report_path(ticket)).strip()
+        ):
             return "qa-prepare"
 
         if current_stage == "qa_prepare":
@@ -959,10 +1010,65 @@ def run_named_step(ticket: str, step: str) -> None:
     mapping[step](ticket)
 
 
-def next_step(ticket: str, execute: bool = False) -> None:
+_PREPARE_STEP_PROMPT: Dict[str, object] = {
+    "architect-prepare": architect_prompt_path,
+    "dev-prepare": dev_prompt_path,
+    "dev-fix-prepare": dev_fix_prompt_path,
+    "review-prepare": review_prompt_path,
+    "qa-prepare": qa_prompt_path,
+}
+
+
+def spawn_claude_wezterm(
+    prompt_path: Path, cwd: str, wait_seconds: float = 4.0
+) -> None:
+    result = subprocess.run(
+        [
+            "wezterm",
+            "cli",
+            "spawn",
+            "--cwd",
+            cwd,
+            "--",
+            "claude",
+            "--dangerously-skip-permissions",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        print(f"[WARN] wezterm spawn failed: {result.stderr.strip()}", file=sys.stderr)
+        return
+
+    pane_id = result.stdout.strip()
+    if not pane_id:
+        print(
+            "[WARN] Could not get WezTerm pane ID, skipping auto-paste.",
+            file=sys.stderr,
+        )
+        return
+
+    print(
+        f"[AUTO] Spawned Claude in WezTerm pane {pane_id}. Waiting {wait_seconds}s for it to load..."
+    )
+    time.sleep(wait_seconds)
+
+    prompt_text = prompt_path.read_text(encoding="utf-8").rstrip("\n")
+    subprocess.run(
+        ["wezterm", "cli", "send-text", "--pane-id", pane_id, "--no-paste"],
+        input=prompt_text,
+        text=True,
+    )
+    print(f"[AUTO] Prompt pasted into pane {pane_id}. Press Enter in Claude to submit.")
+
+
+def next_step(ticket: str, execute: bool = False, run_auto: bool = False) -> None:
     step = next_action(ticket)
-    if execute:
+    if run_auto or execute:
         run_named_step(ticket, step)
+        if run_auto and step in _PREPARE_STEP_PROMPT:
+            prompt_path = _PREPARE_STEP_PROMPT[step](ticket)  # type: ignore[operator]
+            spawn_claude_wezterm(prompt_path, str(Path.cwd()))
     else:
         print(step)
 
@@ -972,13 +1078,19 @@ def show_status(ticket: str) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Reusable file-referenced prepare/complete workflow for local AI agent team.")
+    parser = argparse.ArgumentParser(
+        description="Reusable file-referenced prepare/complete workflow for local AI agent team."
+    )
     sub = parser.add_subparsers(dest="command", required=True)
 
     p_init = sub.add_parser("init", help="Initialize a ticket run.")
     p_init.add_argument("ticket", help="Ticket ID, e.g. TICKET-123")
     p_init.add_argument("requirement", help="Initial input text")
-    p_init.add_argument("--domain", default="", help="Optional domain override, e.g. backend or frontend")
+    p_init.add_argument(
+        "--domain",
+        default="",
+        help="Optional domain override, e.g. backend or frontend",
+    )
 
     for cmd in [
         "architect-prepare",
@@ -998,7 +1110,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_next = sub.add_parser("next", help="Show or run the next step.")
     p_next.add_argument("ticket", help="Ticket ID, e.g. TICKET-123")
-    p_next.add_argument("--run", action="store_true", help="Execute the next step instead of only printing it.")
+    p_next.add_argument(
+        "--run",
+        action="store_true",
+        help="Execute the next step instead of only printing it.",
+    )
+    p_next.add_argument(
+        "--run-auto",
+        action="store_true",
+        help="Execute the next step and automatically open Claude in a new WezTerm tab with the prompt pre-loaded.",
+    )
 
     return parser
 
@@ -1033,7 +1154,7 @@ def main() -> int:
         elif args.command == "status":
             show_status(args.ticket)
         elif args.command == "next":
-            next_step(args.ticket, execute=args.run)
+            next_step(args.ticket, execute=args.run, run_auto=args.run_auto)
         else:
             parser.print_help()
             return 2
