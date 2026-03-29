@@ -59,6 +59,8 @@ Each stage follows a **prepare → act → complete** pattern:
 
 Use `python .ai/bin/ai_run.py next <TICKET> --run` to auto-advance through stages.
 
+Use `python .ai/bin/ai_run.py next <TICKET> --run-auto` to auto-advance **and** automatically open Claude in a new WezTerm tab with the generated prompt pre-loaded. After the prepare step runs, the script spawns a new WezTerm pane, launches `claude --dangerously-skip-permissions`, waits for it to load, then sends the prompt text into the pane. You still need to press Enter in the new Claude session to submit.
+
 ## Stages in order
 
 | Step               | CLI command                     | Your job                                                       |
@@ -76,6 +78,23 @@ Use `python .ai/bin/ai_run.py next <TICKET> --run` to auto-advance through stage
 | QA Prepare         | `qa-prepare <TICKET>`           | (generates prompt)                                             |
 | **QA**             | _(paste prompt)_                | Write qa_report.json                                           |
 | QA Complete        | `qa-complete <TICKET>`          | (verifies + builds qa fix context)                             |
+
+---
+
+# 🖥️ WezTerm Auto-Spawn
+
+When `--run-auto` is passed to `next`, the runner automatically:
+
+1. Runs the prepare step (generates the prompt file)
+2. Spawns a new WezTerm pane via `wezterm cli spawn` with `claude --dangerously-skip-permissions`
+3. Waits ~4 seconds for Claude to load
+4. Sends the full prompt text into the pane via `wezterm cli send-text`
+
+You then press Enter in the new Claude session to submit the prompt.
+
+This only triggers for prepare steps: `architect-prepare`, `dev-prepare`, `dev-fix-prepare`, `review-prepare`, `qa-prepare`. Complete steps (`*-complete`) run unattended and do not open a new pane.
+
+**Requirements:** WezTerm must be installed and `wezterm` must be in `$PATH`. If the spawn fails, the runner prints a warning and exits gracefully — no prompt is sent.
 
 ---
 
