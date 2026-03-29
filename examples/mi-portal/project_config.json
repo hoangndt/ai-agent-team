@@ -1,0 +1,149 @@
+{
+  "project_name": "MiPortal",
+  "default_domain": "frontend",
+  "git": {
+    "base_branch": "develop"
+  },
+  "domains": {
+    "frontend": {
+      "paths": [
+        "webapp/"
+      ],
+      "skills": {
+        "architect": [
+          ".ai/skills/frontend/angular/SKILL.md",
+          ".ai/skills/frontend/playwright_e2e/SKILL.md",
+          ".ai/skills/frontend/launchdarkly/SKILL.md",
+          ".ai/skills/frontend/tableau/SKILL.md",
+          ".ai/skills/frontend/amplitude/SKILL.md"
+        ],
+        "developer": [
+          ".ai/skills/frontend/angular/SKILL.md",
+          ".ai/skills/frontend/playwright_e2e/SKILL.md",
+          ".ai/skills/frontend/launchdarkly/SKILL.md",
+          ".ai/skills/frontend/tableau/SKILL.md",
+          ".ai/skills/frontend/amplitude/SKILL.md"
+        ],
+        "reviewer": [
+          ".ai/skills/frontend/frontend_reviewer/SKILL.md"
+        ],
+        "qa": [
+          ".ai/skills/frontend/frontend_qa/SKILL.md"
+        ]
+      }
+    },
+    "backend": {
+      "paths": [
+        "api/"
+      ],
+      "skills": {
+        "architect": [
+          ".ai/skills/backend/dotnet/SKILL.md",
+          ".ai/skills/backend/snowflake/SKILL.md",
+          ".ai/skills/backend/mssql/SKILL.md",
+          ".ai/skills/backend/aws/SKILL.md",
+          ".ai/skills/backend/report_export/SKILL.md"
+        ],
+        "developer": [
+          ".ai/skills/backend/dotnet/SKILL.md",
+          ".ai/skills/backend/snowflake/SKILL.md",
+          ".ai/skills/backend/mssql/SKILL.md",
+          ".ai/skills/backend/aws/SKILL.md",
+          ".ai/skills/backend/report_export/SKILL.md"
+        ],
+        "reviewer": [
+          ".ai/skills/backend/backend_reviewer/SKILL.md"
+        ],
+        "qa": [
+          ".ai/skills/backend/backend_qa/SKILL.md"
+        ]
+      }
+    },
+    "acceptance_tests": {
+      "paths": [
+        "acceptance-tests/"
+      ],
+      "skills": {
+        "architect": [
+          ".ai/skills/acceptance_tests/playwright_acceptance/SKILL.md"
+        ],
+        "developer": [
+          ".ai/skills/acceptance_tests/playwright_acceptance/SKILL.md"
+        ],
+        "reviewer": [
+          ".ai/skills/acceptance_tests/playwright_acceptance/SKILL.md"
+        ],
+        "qa": [
+          ".ai/skills/acceptance_tests/playwright_acceptance/SKILL.md"
+        ]
+      }
+    },
+    "integration_tests": {
+      "paths": [
+        "IntegrationTests/"
+      ],
+      "skills": {
+        "architect": [
+          ".ai/skills/integration_tests/spock/SKILL.md"
+        ],
+        "developer": [
+          ".ai/skills/integration_tests/spock/SKILL.md"
+        ],
+        "reviewer": [
+          ".ai/skills/integration_tests/spock/SKILL.md"
+        ],
+        "qa": [
+          ".ai/skills/integration_tests/spock/SKILL.md"
+        ]
+      }
+    },
+    "middleware": {
+      "paths": [
+        "spiceai-middleware/"
+      ],
+      "skills": {
+        "architect": [
+          ".ai/skills/middleware/spiceai/SKILL.md",
+          ".ai/skills/backend/snowflake/SKILL.md"
+        ],
+        "developer": [
+          ".ai/skills/middleware/spiceai/SKILL.md",
+          ".ai/skills/backend/snowflake/SKILL.md"
+        ],
+        "reviewer": [
+          ".ai/skills/middleware/spiceai/SKILL.md"
+        ],
+        "qa": [
+          ".ai/skills/middleware/spiceai/SKILL.md"
+        ]
+      }
+    },
+    "devops": {
+      "paths": [
+        ".github/",
+        "api/Nrc.MarketInsights/Dockerfile",
+        "api/Nrc.MarketInsights/Dockerfile.dev",
+        "api/Nrc.MarketInsights/Dockerfile.debug",
+        "api/Nrc.MarketInsights/DockerfileBuild",
+        "api/Nrc.MarketInsights/DockerfileBuildWithSonar"
+      ],
+      "skills": {
+        "architect": [
+          ".ai/skills/devops/github_actions/SKILL.md",
+          ".ai/skills/devops/docker/SKILL.md"
+        ],
+        "developer": [
+          ".ai/skills/devops/github_actions/SKILL.md",
+          ".ai/skills/devops/docker/SKILL.md"
+        ],
+        "reviewer": [
+          ".ai/skills/devops/github_actions/SKILL.md",
+          ".ai/skills/devops/docker/SKILL.md"
+        ],
+        "qa": [
+          ".ai/skills/devops/github_actions/SKILL.md"
+        ]
+      }
+    }
+  }
+}
