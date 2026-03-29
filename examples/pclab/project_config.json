@@ -1,0 +1,43 @@
+{
+  "project_name": "PcLab",
+  "default_domain": "backend",
+  "git": {
+    "base_branch": "main"
+  },
+  "domains": {
+    "backend": {
+      "paths": [
+        "backend/"
+      ],
+      "skills": {
+        "architect": [
+          ".ai/skills/backend/python_fastapi/SKILL.md",
+          ".ai/skills/backend/playwright_scraping/SKILL.md",
+          ".ai/skills/backend/postgres_alembic/SKILL.md"
+        ],
+        "developer": [
+          ".ai/skills/backend/python_fastapi/SKILL.md",
+          ".ai/skills/backend/playwright_scraping/SKILL.md",
+          ".ai/skills/backend/postgres_alembic/SKILL.md"
+        ],
+        "reviewer": [
+          ".ai/skills/backend/backend_reviewer/SKILL.md"
+        ],
+        "qa": [
+          ".ai/skills/backend/backend_qa/SKILL.md"
+        ]
+      }
+    },
+    "frontend": {
+      "paths": [
+        "frontend/"
+      ],
+      "skills": {
+        "architect": [],
+        "developer": [],
+        "reviewer": [],
+        "qa": []
+      }
+    }
+  }
+}
