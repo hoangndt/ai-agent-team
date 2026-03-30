@@ -17,6 +17,10 @@ You (Claude) are invoked at specific stages of a ticket workflow. Each stage gen
     developer.md           # Role instructions for Developer
     reviewer.md            # Role instructions for Reviewer
     qa.md                  # Role instructions for QA
+    epic_analyst.md        # Role instructions for Epic Analyst
+    epic_designer.md       # Role instructions for Epic Designer
+    epic_reviewer.md       # Role instructions for Epic Reviewer
+    epic_planner.md        # Role instructions for Epic Planner (breakdown)
   templates/               # Optional shared templates
   project_config.json      # Project name, domain config, base branch, skills
   runs/
@@ -45,6 +49,31 @@ You (Claude) are invoked at specific stages of a ticket workflow. Each stage gen
       qa/
         qa_prompt.md
         qa_report.json
+  epics/
+    <EPIC>/
+      status.json          # Stage tracker (auto-managed)
+      input/
+        epic_input.md      # Written by epic-init
+      analysis/
+        epic_analysis_prompt.md
+        epic_analysis.md
+      design/
+        epic_design_prompt.md
+        epic_design.md
+      review/
+        epic_review_prompt.md
+        epic_review.json
+      fix/
+        epic_design_fix_prompt.md
+        epic_review_fix_context.md  # Built from epic_review.json
+        previous_epic_review.json   # Archived before fix round
+      breakdown/
+        epic_breakdown_prompt.md
+        epic_story_map.md
+        tickets/
+          US-001-<slug>.md
+          US-002-<slug>.md
+          ...
 ```
 
 ---
@@ -92,7 +121,7 @@ When `--run-auto` is passed to `next`, the runner automatically:
 
 You then press Enter in the new Claude session to submit the prompt.
 
-This only triggers for prepare steps: `architect-prepare`, `dev-prepare`, `dev-fix-prepare`, `review-prepare`, `qa-prepare`. Complete steps (`*-complete`) run unattended and do not open a new pane.
+This only triggers for prepare steps: `architect-prepare`, `dev-prepare`, `dev-fix-prepare`, `review-prepare`, `qa-prepare` and their epic equivalents: `epic-analysis-prepare`, `epic-design-prepare`, `epic-design-fix-prepare`, `epic-review-prepare`, `epic-breakdown-prepare`. Complete steps (`*-complete`) run unattended and do not open a new pane.
 
 **Requirements:** WezTerm must be installed and `wezterm` must be in `$PATH`. If the spawn fails, the runner prints a warning and exits gracefully — no prompt is sent.
 
@@ -112,6 +141,71 @@ If the Reviewer returns `request_changes` or `block`, or QA returns `fail`, the 
 Previous reports are archived to `fix/previous_review_report.json` and `fix/previous_qa_report.json`. Follow-up reviews check whether prior issues were resolved.
 
 The workflow is **done** when review decision is `approve` and QA decision is `pass`.
+
+---
+
+# 🏔️ Epic Workflow
+
+An **epic** is a higher-level planning pipeline that produces an analysis, a design, a review, and a breakdown into user stories/tickets. It lives under `.ai/epics/<EPIC>/` and contains **no code execution** — it is planning only.
+
+Use `python .ai/bin/ai_run.py epic-next <EPIC> --run` to auto-advance through stages.
+Use `python .ai/bin/ai_run.py epic-next <EPIC> --run-auto` to also spawn a WezTerm pane.
+
+## Epic stages in order
+
+| Step                     | CLI command                          | Your job                                                              |
+| ------------------------ | ------------------------------------ | --------------------------------------------------------------------- |
+| Epic Init                | `epic-init <EPIC> "<requirement>"`   | (automated)                                                           |
+| Analysis Prepare         | `epic-analysis-prepare <EPIC>`       | (generates prompt)                                                    |
+| **Epic Analyst**         | _(paste prompt)_                     | Write `epic_analysis.md`                                              |
+| Analysis Complete        | `epic-analysis-complete <EPIC>`      | (verifies file)                                                       |
+| Design Prepare           | `epic-design-prepare <EPIC>`         | (generates prompt)                                                    |
+| **Epic Designer**        | _(paste prompt)_                     | Write `epic_design.md`                                                |
+| Design Complete          | `epic-design-complete <EPIC>`        | (verifies file)                                                       |
+| Review Prepare           | `epic-review-prepare <EPIC>`         | (generates prompt)                                                    |
+| **Epic Reviewer**        | _(paste prompt)_                     | Write `epic_review.json`                                              |
+| Review Complete          | `epic-review-complete <EPIC>`        | (verifies + builds fix context)                                       |
+| Breakdown Prepare        | `epic-breakdown-prepare <EPIC>`      | (generates prompt, only after approved review)                        |
+| **Epic Planner**         | _(paste prompt)_                     | Write `epic_story_map.md` + individual ticket files in `tickets/`     |
+| Breakdown Complete       | `epic-breakdown-complete <EPIC>`     | (verifies story map + at least one ticket file)                       |
+
+## Epic fix loop
+
+If the Epic Reviewer returns `request_changes` or `block`, the workflow enters a design fix cycle:
+
+| Step                     | CLI command                          | Your job                                                              |
+| ------------------------ | ------------------------------------ | --------------------------------------------------------------------- |
+| Design Fix Prepare       | `epic-design-fix-prepare <EPIC>`     | (generates fix prompt with review context)                            |
+| **Epic Designer**        | _(paste prompt)_                     | Fix issues in `epic_design.md`, update fix notes                      |
+| Design Fix Complete      | `epic-design-fix-complete <EPIC>`    | (verifies design)                                                     |
+| → back to Review Prepare |                                      |                                                                       |
+
+The previous `epic_review.json` is archived to `fix/previous_epic_review.json` before each fix round. The epic workflow is **done** when review decision is `approve` and the breakdown is complete.
+
+## Epic agent file responsibilities
+
+### Epic Analyst writes
+- `analysis/epic_analysis.md` — scope, goals, stakeholders, constraints, open questions
+
+### Epic Designer writes
+- `design/epic_design.md` — system design, component breakdown, data/API flows, trade-offs
+  - On fix rounds: overwrite with corrected version
+
+### Epic Reviewer writes
+- `review/epic_review.json` — strict JSON:
+  ```json
+  {
+    "decision": "approve|request_changes|block",
+    "issues": [
+      { "severity": "high|medium|low", "area": "...", "message": "..." }
+    ],
+    "summary": "..."
+  }
+  ```
+
+### Epic Planner writes
+- `breakdown/epic_story_map.md` — ordered list of user stories with descriptions
+- `breakdown/tickets/<US-NNN-slug>.md` — one file per user story/ticket (at least one required)
 
 ---
 
