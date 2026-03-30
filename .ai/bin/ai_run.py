@@ -121,6 +121,95 @@ def qa_report_path(ticket: str) -> Path:
     return qa_dir(ticket) / "qa_report.json"
 
 
+# ── EPIC PATH HELPERS ──────────────────────────────────────────────────────────
+
+EPICS = BASE / "epics"
+
+
+def epic_path(epic: str) -> Path:
+    return EPICS / epic
+
+
+def epic_status_file(epic: str) -> Path:
+    return epic_path(epic) / "status.json"
+
+
+def epic_input_dir(epic: str) -> Path:
+    return epic_path(epic) / "input"
+
+
+def epic_input_file(epic: str) -> Path:
+    return epic_input_dir(epic) / "epic_input.md"
+
+
+def epic_analysis_dir(epic: str) -> Path:
+    return epic_path(epic) / "analysis"
+
+
+def epic_analysis_prompt_path(epic: str) -> Path:
+    return epic_analysis_dir(epic) / "epic_analysis_prompt.md"
+
+
+def epic_analysis_path(epic: str) -> Path:
+    return epic_analysis_dir(epic) / "epic_analysis.md"
+
+
+def epic_design_dir(epic: str) -> Path:
+    return epic_path(epic) / "design"
+
+
+def epic_design_prompt_path(epic: str) -> Path:
+    return epic_design_dir(epic) / "epic_design_prompt.md"
+
+
+def epic_design_path(epic: str) -> Path:
+    return epic_design_dir(epic) / "epic_design.md"
+
+
+def epic_review_dir(epic: str) -> Path:
+    return epic_path(epic) / "review"
+
+
+def epic_review_prompt_path(epic: str) -> Path:
+    return epic_review_dir(epic) / "epic_review_prompt.md"
+
+
+def epic_review_report_path(epic: str) -> Path:
+    return epic_review_dir(epic) / "epic_review.json"
+
+
+def epic_fix_dir(epic: str) -> Path:
+    return epic_path(epic) / "fix"
+
+
+def epic_design_fix_prompt_path(epic: str) -> Path:
+    return epic_fix_dir(epic) / "epic_design_fix_prompt.md"
+
+
+def epic_review_fix_context_path(epic: str) -> Path:
+    return epic_fix_dir(epic) / "epic_review_fix_context.md"
+
+
+def previous_epic_review_path(epic: str) -> Path:
+    return epic_fix_dir(epic) / "previous_epic_review.json"
+
+
+def epic_breakdown_dir(epic: str) -> Path:
+    return epic_path(epic) / "breakdown"
+
+
+def epic_breakdown_prompt_path(epic: str) -> Path:
+    return epic_breakdown_dir(epic) / "epic_breakdown_prompt.md"
+
+
+def epic_story_map_path(epic: str) -> Path:
+    return epic_breakdown_dir(epic) / "epic_story_map.md"
+
+
+def epic_tickets_dir(epic: str) -> Path:
+    return epic_breakdown_dir(epic) / "tickets"
+
+
 def read(path: Path) -> str:
     if not path.exists():
         return ""
@@ -146,6 +235,20 @@ def ensure_ticket_dirs(ticket: str) -> None:
         fix_dir(ticket),
         review_dir(ticket),
         qa_dir(ticket),
+    ]:
+        path.mkdir(parents=True, exist_ok=True)
+
+
+def ensure_epic_dirs(epic: str) -> None:
+    for path in [
+        epic_path(epic),
+        epic_input_dir(epic),
+        epic_analysis_dir(epic),
+        epic_design_dir(epic),
+        epic_review_dir(epic),
+        epic_fix_dir(epic),
+        epic_breakdown_dir(epic),
+        epic_tickets_dir(epic),
     ]:
         path.mkdir(parents=True, exist_ok=True)
 
@@ -179,6 +282,20 @@ def init_status(ticket: str, domain: str) -> Dict:
     ts = now()
     return {
         "ticket": ticket,
+        "domain": domain,
+        "current_stage": "init",
+        "state": "ready",
+        "updated_at": ts,
+        "artifacts": {},
+        "history": [{"stage": "init", "status": "done", "time": ts}],
+        "runner": {"mode": "file_referenced_prompts", "last_command": None},
+    }
+
+
+def init_epic_status(epic: str, domain: str) -> Dict:
+    ts = now()
+    return {
+        "epic": epic,
         "domain": domain,
         "current_stage": "init",
         "state": "ready",
@@ -236,6 +353,72 @@ def set_runner(ticket: str, detail: str) -> None:
     s.setdefault("runner", {})["last_command"] = detail
     s["updated_at"] = now()
     save_status(ticket, s)
+
+
+# ── EPIC STATUS HELPERS ────────────────────────────────────────────────────────
+
+def load_epic_status(epic: str) -> Dict:
+    sf = epic_status_file(epic)
+    if not sf.exists():
+        raise FileNotFoundError(
+            f"Status file not found for epic '{epic}'. Run epic-init first."
+        )
+    return json.loads(sf.read_text(encoding="utf-8"))
+
+
+def save_epic_status(epic: str, data: Dict) -> None:
+    write(epic_status_file(epic), json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+
+
+def update_epic_stage(epic: str, stage: str, state: str = "running") -> None:
+    s = load_epic_status(epic)
+    s["current_stage"] = stage
+    s["state"] = state
+    s["updated_at"] = now()
+    save_epic_status(epic, s)
+
+
+def complete_epic_stage(epic: str, stage: str, note: str = "") -> None:
+    s = load_epic_status(epic)
+    s["current_stage"] = stage
+    s["state"] = "ready"
+    s["updated_at"] = now()
+    s.setdefault("history", []).append(
+        {"stage": stage, "status": "done", "time": now(), "note": note}
+    )
+    save_epic_status(epic, s)
+
+
+def fail_epic_stage(epic: str, stage: str, note: str = "") -> None:
+    s = load_epic_status(epic)
+    s["current_stage"] = stage
+    s["state"] = "failed"
+    s["updated_at"] = now()
+    s.setdefault("history", []).append(
+        {"stage": stage, "status": "failed", "time": now(), "note": note}
+    )
+    save_epic_status(epic, s)
+
+
+def set_epic_artifact(epic: str, key: str, path: Path) -> None:
+    s = load_epic_status(epic)
+    s.setdefault("artifacts", {})[key] = str(path)
+    s["updated_at"] = now()
+    save_epic_status(epic, s)
+
+
+def set_epic_runner(epic: str, detail: str) -> None:
+    s = load_epic_status(epic)
+    s.setdefault("runner", {})["last_command"] = detail
+    s["updated_at"] = now()
+    save_epic_status(epic, s)
+
+
+def ensure_non_empty_epic_files(paths: List[Path], stage: str, epic: str) -> None:
+    missing = [p.as_posix() for p in paths if not p.exists() or not read(p).strip()]
+    if missing:
+        fail_epic_stage(epic, stage, f"Missing files: {', '.join(missing)}")
+        raise FileNotFoundError(f"Missing or empty files: {', '.join(missing)}")
 
 
 def init_ticket(ticket: str, requirement: str, domain: str = "") -> None:
@@ -437,6 +620,111 @@ def build_qa_fix_context(ticket: str) -> Optional[Path]:
     write(path, "\n".join(lines).strip() + "\n")
     set_artifact(ticket, "qa_fix_context", path)
     return path
+
+
+def get_epic_domain(epic: str) -> str:
+    s = load_epic_status(epic)
+    if s.get("domain"):
+        return s["domain"]
+    return load_project_config().get("default_domain", "workflow")
+
+
+def build_epic_project_context(epic: str) -> str:
+    config = load_project_config()
+    domain = get_epic_domain(epic)
+    domain_cfg = config.get("domains", {}).get(domain, {})
+    lines = [
+        f"Project: {config.get('project_name', 'Unknown')}",
+        f"Domain: {domain}",
+        f"Base branch: {get_base_branch()}",
+    ]
+    paths = domain_cfg.get("paths", [])
+    if paths:
+        lines.append("Relevant paths:")
+        for p in paths:
+            lines.append(f"- {p}")
+    return "\n".join(lines)
+
+
+def get_epic_role_skills(epic: str, role: str) -> List[Path]:
+    config = load_project_config()
+    domain = get_epic_domain(epic)
+    domain_cfg = config.get("domains", {}).get(domain, {})
+    skill_paths = domain_cfg.get("skills", {}).get(role, [])
+    return [Path(p) for p in skill_paths]
+
+
+def build_epic_role_prompt(epic: str, role: str, task_instruction: str) -> str:
+    role_file_map = {
+        "epic_analyst": "epic_analyst.md",
+        "epic_designer": "epic_designer.md",
+        "epic_reviewer": "epic_reviewer.md",
+        "epic_planner": "epic_planner.md",
+    }
+    role_prompt = require_agent_file(role_file_map[role])
+    project_context = build_epic_project_context(epic)
+    skill_content = load_skill_contents(get_epic_role_skills(epic, role))
+    parts = [
+        "# Role Instruction",
+        role_prompt,
+        "",
+        "# Project Context",
+        project_context,
+    ]
+    if skill_content:
+        parts.extend(["", "# Domain Skills", skill_content])
+    parts.extend(["", "# Task Instruction", task_instruction.strip()])
+    return "\n".join(parts) + "\n"
+
+
+def build_epic_review_fix_context(epic: str) -> Optional[Path]:
+    path = epic_review_report_path(epic)
+    if not path.exists() or not read(path).strip():
+        return None
+
+    try:
+        review = json.loads(read(path))
+    except Exception:
+        return None
+
+    issues = review.get("issues", [])
+    if not isinstance(issues, list) or not issues:
+        return None
+
+    buckets: Dict[str, list] = {"high": [], "medium": [], "low": [], "unknown": []}
+    for item in issues:
+        sev = str(item.get("severity", "unknown")).lower()
+        if sev not in buckets:
+            sev = "unknown"
+        buckets[sev].append(item)
+
+    lines = [
+        "# Epic Review Fix Context",
+        "",
+        "Use this file to fix epic design review findings.",
+        "",
+        f"Reviewer decision: {review.get('decision', 'unknown')}",
+        "",
+    ]
+
+    for sev in ["high", "medium", "low", "unknown"]:
+        if not buckets[sev]:
+            continue
+        lines.append(f"## {sev.capitalize()} Severity Issues")
+        for idx, issue in enumerate(buckets[sev], start=1):
+            area = issue.get("area", issue.get("file", "unknown"))
+            lines.append(f"{idx}. Area: {area}")
+            lines.append(f"   Issue: {str(issue.get('message', '')).strip()}")
+        lines.append("")
+
+    summary = str(review.get("summary", "")).strip()
+    if summary:
+        lines.extend(["## Reviewer Summary", summary, ""])
+
+    ctx_path = epic_review_fix_context_path(epic)
+    write(ctx_path, "\n".join(lines).strip() + "\n")
+    set_epic_artifact(epic, "epic_review_fix_context", ctx_path)
+    return ctx_path
 
 
 def architect_prepare(ticket: str) -> None:
@@ -896,6 +1184,509 @@ def qa_complete(ticket: str) -> None:
     print(f"[OK] QA file verified for {ticket} ({decision})")
 
 
+# ── EPIC WORKFLOW ──────────────────────────────────────────────────────────────
+
+def epic_init(epic: str, requirement: str, domain: str = "") -> None:
+    ensure_base_dirs()
+    config = load_project_config()
+    resolved_domain = domain or config.get("default_domain", "workflow")
+
+    ensure_epic_dirs(epic)
+
+    write(epic_input_file(epic), requirement.strip() + "\n")
+    save_epic_status(epic, init_epic_status(epic, resolved_domain))
+    set_epic_artifact(epic, "epic_input", epic_input_file(epic))
+    print(f"[OK] Initialized epic {epic} at {epic_path(epic)} (domain={resolved_domain})")
+
+
+def epic_analysis_prepare(epic: str) -> None:
+    update_epic_stage(epic, "epic_analysis_prepare")
+    set_epic_runner(epic, "epic-analysis-prepare")
+
+    ensure_non_empty_epic_files([epic_input_file(epic)], "epic_analysis_prepare", epic)
+
+    task_instruction = f"""Work inside the current repository.
+
+Read these files:
+{file_ref_list([epic_input_file(epic)])}
+
+Analyze the epic requirement and write a comprehensive analysis directly to:
+- {epic_analysis_path(epic).as_posix()}
+
+The analysis must include:
+1. Problem statement — restate the epic in your own words
+2. Goals — primary objectives and success metrics
+3. Scope — what is in and out of scope
+4. Key stakeholders or user personas affected
+5. High-level solution areas — major functional areas to address
+6. Open questions — unknowns that must be resolved before design
+
+Important:
+- Write the analysis directly to the file above.
+- Do not reply in chat with the final content.
+- Keep the analysis concise but thorough.
+"""
+    prompt = build_epic_role_prompt(epic, "epic_analyst", task_instruction)
+    write(epic_analysis_prompt_path(epic), prompt)
+    set_epic_artifact(epic, "epic_analysis_prompt", epic_analysis_prompt_path(epic))
+    complete_epic_stage(epic, "epic_analysis_prepare", "Generated epic analysis prompt.")
+    print(f"[OK] Wrote {epic_analysis_prompt_path(epic)}")
+    print(
+        "[NEXT] Paste this prompt into Claude. Let it write epic_analysis.md, then run epic-next --run."
+    )
+
+
+def epic_analysis_complete(epic: str) -> None:
+    update_epic_stage(epic, "epic_analysis_complete")
+    set_epic_runner(epic, "epic-analysis-complete")
+
+    ensure_non_empty_epic_files([epic_analysis_path(epic)], "epic_analysis_complete", epic)
+    set_epic_artifact(epic, "epic_analysis", epic_analysis_path(epic))
+
+    complete_epic_stage(epic, "epic_analysis_complete", "Epic analysis verified.")
+    print(f"[OK] Epic analysis verified for {epic}")
+
+
+def epic_design_prepare(epic: str) -> None:
+    update_epic_stage(epic, "epic_design_prepare")
+    set_epic_runner(epic, "epic-design-prepare")
+
+    required_inputs = [epic_input_file(epic), epic_analysis_path(epic)]
+    ensure_non_empty_epic_files(required_inputs, "epic_design_prepare", epic)
+
+    task_instruction = f"""Work inside the current repository.
+
+Read these files:
+{file_ref_list(required_inputs)}
+
+Produce a detailed epic design document and write it directly to:
+- {epic_design_path(epic).as_posix()}
+
+The design must include:
+1. Solution overview — high-level approach and architecture
+2. Key design decisions — rationale for major choices
+3. Component breakdown — major components or services involved
+4. Data flow — how information moves through the system
+5. Integration points — external systems or APIs affected
+6. Risks and trade-offs — known risks and mitigation strategies
+7. Out of scope — explicit exclusions from this epic
+
+Important:
+- Write the design directly to the file above.
+- Do not reply in chat with the final content.
+"""
+    prompt = build_epic_role_prompt(epic, "epic_designer", task_instruction)
+    write(epic_design_prompt_path(epic), prompt)
+    set_epic_artifact(epic, "epic_design_prompt", epic_design_prompt_path(epic))
+    complete_epic_stage(epic, "epic_design_prepare", "Generated epic design prompt.")
+    print(f"[OK] Wrote {epic_design_prompt_path(epic)}")
+    print(
+        "[NEXT] Paste this prompt into Claude. Let it write epic_design.md, then run epic-next --run."
+    )
+
+
+def epic_design_complete(epic: str) -> None:
+    update_epic_stage(epic, "epic_design_complete")
+    set_epic_runner(epic, "epic-design-complete")
+
+    ensure_non_empty_epic_files([epic_design_path(epic)], "epic_design_complete", epic)
+    set_epic_artifact(epic, "epic_design", epic_design_path(epic))
+
+    complete_epic_stage(epic, "epic_design_complete", "Epic design verified.")
+    print(f"[OK] Epic design verified for {epic}")
+
+
+def epic_review_prepare(epic: str) -> None:
+    update_epic_stage(epic, "epic_review_prepare")
+    set_epic_runner(epic, "epic-review-prepare")
+
+    required_inputs = [
+        epic_input_file(epic),
+        epic_analysis_path(epic),
+        epic_design_path(epic),
+    ]
+    ensure_non_empty_epic_files(required_inputs, "epic_review_prepare", epic)
+
+    followup_mode = (
+        previous_epic_review_path(epic).exists()
+        and read(previous_epic_review_path(epic)).strip()
+    )
+
+    followup_block = ""
+    if followup_mode:
+        extra_files = [previous_epic_review_path(epic)]
+        if (
+            epic_review_fix_context_path(epic).exists()
+            and read(epic_review_fix_context_path(epic)).strip()
+        ):
+            extra_files.append(epic_review_fix_context_path(epic))
+
+        followup_block = f"""
+
+This is a follow-up review after a designer fix round.
+
+Also read these files:
+{file_ref_list(extra_files)}
+
+Follow-up review rules:
+- Verify whether previous review issues were addressed in the updated design
+- Do not repeat already fixed issues
+- Keep only unresolved previous issues
+- Add any new issues introduced by the revisions
+- In the summary, explicitly state whether previous high-severity issues were resolved
+"""
+
+    task_instruction = f"""Work inside the current repository.
+
+Read these files:
+{file_ref_list(required_inputs)}{followup_block}
+
+Review the epic design for completeness, feasibility, and alignment with the stated requirements.
+
+Write valid JSON only directly to:
+- {epic_review_report_path(epic).as_posix()}
+
+Required JSON format:
+{{
+  "decision": "approve|request_changes|block",
+  "issues": [
+    {{
+      "severity": "high|medium|low",
+      "area": "...",
+      "message": "..."
+    }}
+  ],
+  "summary": "..."
+}}
+
+Review rules:
+- List high severity issues first
+- Tie findings to feasibility, completeness, or alignment with requirements
+- Prefer concrete, actionable comments
+
+Important:
+- Do not reply in chat with the final JSON.
+- Write the JSON directly to the target file.
+"""
+    prompt = build_epic_role_prompt(epic, "epic_reviewer", task_instruction)
+    write(epic_review_prompt_path(epic), prompt)
+    set_epic_artifact(epic, "epic_review_prompt", epic_review_prompt_path(epic))
+    complete_epic_stage(epic, "epic_review_prepare", "Generated epic review prompt.")
+    print(f"[OK] Wrote {epic_review_prompt_path(epic)}")
+    print(
+        "[NEXT] Paste this prompt into Claude. Let it write epic_review.json, then run epic-next --run."
+    )
+
+
+def epic_review_complete(epic: str) -> None:
+    update_epic_stage(epic, "epic_review_complete")
+    set_epic_runner(epic, "epic-review-complete")
+
+    ensure_non_empty_epic_files([epic_review_report_path(epic)], "epic_review_complete", epic)
+
+    parsed = json.loads(read(epic_review_report_path(epic)))
+    write(
+        epic_review_report_path(epic),
+        json.dumps(parsed, indent=2, ensure_ascii=False) + "\n",
+    )
+    set_epic_artifact(epic, "epic_review_report", epic_review_report_path(epic))
+
+    build_epic_review_fix_context(epic)
+
+    decision = parsed.get("decision", "unknown")
+    complete_epic_stage(epic, "epic_review_complete", f"Epic reviewer decision: {decision}")
+    print(f"[OK] Epic review verified for {epic} ({decision})")
+
+
+def epic_design_fix_prepare(epic: str) -> None:
+    update_epic_stage(epic, "epic_design_fix_prepare")
+    set_epic_runner(epic, "epic-design-fix-prepare")
+
+    required_inputs = [
+        epic_input_file(epic),
+        epic_analysis_path(epic),
+        epic_design_path(epic),
+    ]
+    ensure_non_empty_epic_files(required_inputs, "epic_design_fix_prepare", epic)
+
+    if not epic_review_report_path(epic).exists() or not read(epic_review_report_path(epic)).strip():
+        fail_epic_stage(epic, "epic_design_fix_prepare", "No epic_review.json found")
+        raise FileNotFoundError("No epic_review.json found for epic design fix mode")
+
+    # Build fix context before archiving
+    fix_ctx = build_epic_review_fix_context(epic)
+
+    # Archive the review report
+    archived_review = previous_epic_review_path(epic)
+    write(archived_review, read(epic_review_report_path(epic)))
+    epic_review_report_path(epic).unlink(missing_ok=True)
+    set_epic_artifact(epic, "previous_epic_review", archived_review)
+
+    extra_paths: List[Path] = [archived_review]
+    if fix_ctx:
+        extra_paths.append(fix_ctx)
+
+    task_instruction = f"""Work inside the current repository.
+
+Read these files:
+{file_ref_list(required_inputs + extra_paths)}
+
+Your task is to revise the epic design to address all review findings.
+
+Fix rules:
+- Resolve all high severity issues identified in the review
+- Address medium and low severity issues where feasible
+- Do NOT redesign from scratch — revise the existing design document
+- Preserve sections that were not flagged as problematic
+- Be explicit in the design about how each major issue was addressed
+
+Overwrite the epic design file with the corrected version:
+- {epic_design_path(epic).as_posix()}
+
+Important:
+- Write the updated design directly to the file above.
+- Do not reply in chat with the final content.
+"""
+    prompt = build_epic_role_prompt(epic, "epic_designer", task_instruction)
+    write(epic_design_fix_prompt_path(epic), prompt)
+    set_epic_artifact(epic, "epic_design_fix_prompt", epic_design_fix_prompt_path(epic))
+    complete_epic_stage(epic, "epic_design_fix_prepare", "Generated epic design fix prompt.")
+    print(f"[OK] Wrote {epic_design_fix_prompt_path(epic)}")
+    print(
+        "[NEXT] Paste this prompt into Claude. Let it update epic_design.md, then run epic-next --run."
+    )
+
+
+def epic_design_fix_complete(epic: str) -> None:
+    update_epic_stage(epic, "epic_design_fix_complete")
+    set_epic_runner(epic, "epic-design-fix-complete")
+
+    ensure_non_empty_epic_files([epic_design_path(epic)], "epic_design_fix_complete", epic)
+    set_epic_artifact(epic, "epic_design", epic_design_path(epic))
+
+    complete_epic_stage(epic, "epic_design_fix_complete", "Epic design fix verified.")
+    print(f"[OK] Epic design fix verified for {epic}")
+
+
+def epic_breakdown_prepare(epic: str) -> None:
+    update_epic_stage(epic, "epic_breakdown_prepare")
+    set_epic_runner(epic, "epic-breakdown-prepare")
+
+    required_inputs = [
+        epic_input_file(epic),
+        epic_analysis_path(epic),
+        epic_design_path(epic),
+    ]
+    ensure_non_empty_epic_files(required_inputs, "epic_breakdown_prepare", epic)
+
+    if not epic_review_report_path(epic).exists() or not read(epic_review_report_path(epic)).strip():
+        fail_epic_stage(epic, "epic_breakdown_prepare", "No approved epic_review.json found")
+        raise FileNotFoundError(
+            "No epic_review.json found. Run epic-review-complete first."
+        )
+
+    try:
+        review = json.loads(read(epic_review_report_path(epic)))
+    except Exception:
+        fail_epic_stage(epic, "epic_breakdown_prepare", "epic_review.json is not valid JSON")
+        raise
+
+    if review.get("decision") != "approve":
+        fail_epic_stage(
+            epic,
+            "epic_breakdown_prepare",
+            f"Review decision is '{review.get('decision')}', not 'approve'",
+        )
+        raise ValueError(
+            f"Cannot run breakdown: review decision is '{review.get('decision')}'. Must be 'approve'."
+        )
+
+    tickets_dir = epic_tickets_dir(epic)
+
+    task_instruction = f"""Work inside the current repository.
+
+Read these files:
+{file_ref_list(required_inputs)}
+
+Break the epic down into a structured set of user stories and tickets.
+
+Write the story map directly to:
+- {epic_story_map_path(epic).as_posix()}
+
+Write individual ticket files directly to:
+- {tickets_dir.as_posix()}/<US-NNN-short-slug>.md
+
+Story map requirements:
+1. List all user stories in priority order
+2. Group stories by theme or functional area
+3. Estimate rough complexity (S/M/L/XL) for each story
+4. Note dependencies between stories
+
+Ticket file requirements (one file per story):
+- Filename format: US-NNN-<slug>.md (e.g. US-001-add-cli-commands.md)
+- Each file must include:
+  1. Title
+  2. User story (As a... I want... So that...)
+  3. Acceptance criteria (numbered list)
+  4. Out of scope
+  5. Estimated complexity
+  6. Dependencies (if any)
+
+Important:
+- Write the story map and all ticket files directly.
+- Do not reply in chat with the final content.
+- Create at least one ticket file in {tickets_dir.as_posix()}.
+"""
+    prompt = build_epic_role_prompt(epic, "epic_planner", task_instruction)
+    write(epic_breakdown_prompt_path(epic), prompt)
+    set_epic_artifact(epic, "epic_breakdown_prompt", epic_breakdown_prompt_path(epic))
+    complete_epic_stage(epic, "epic_breakdown_prepare", "Generated epic breakdown prompt.")
+    print(f"[OK] Wrote {epic_breakdown_prompt_path(epic)}")
+    print(
+        "[NEXT] Paste this prompt into Claude. Let it write epic_story_map.md and ticket files, then run epic-next --run."
+    )
+
+
+def epic_breakdown_complete(epic: str) -> None:
+    update_epic_stage(epic, "epic_breakdown_complete")
+    set_epic_runner(epic, "epic-breakdown-complete")
+
+    ensure_non_empty_epic_files([epic_story_map_path(epic)], "epic_breakdown_complete", epic)
+
+    ticket_files = list(epic_tickets_dir(epic).glob("*.md"))
+    if not ticket_files:
+        fail_epic_stage(
+            epic,
+            "epic_breakdown_complete",
+            "No ticket files found in breakdown/tickets/",
+        )
+        raise FileNotFoundError(
+            f"No ticket files found in {epic_tickets_dir(epic).as_posix()}. "
+            "The epic_planner must write at least one *.md file there."
+        )
+
+    set_epic_artifact(epic, "epic_story_map", epic_story_map_path(epic))
+    set_epic_artifact(epic, "epic_tickets_dir", epic_tickets_dir(epic))
+
+    complete_epic_stage(
+        epic,
+        "epic_breakdown_complete",
+        f"Epic breakdown verified. {len(ticket_files)} ticket(s) found.",
+    )
+    print(f"[OK] Epic breakdown verified for {epic} ({len(ticket_files)} ticket(s))")
+
+
+def epic_current_review_decision(epic: str) -> Optional[str]:
+    try:
+        if epic_review_report_path(epic).exists():
+            return json.loads(read(epic_review_report_path(epic))).get("decision")
+    except Exception:
+        pass
+    return None
+
+
+def epic_next_action(epic: str) -> str:
+    current_stage = load_epic_status(epic).get("current_stage", "")
+    review_decision = epic_current_review_decision(epic)
+
+    # Analysis
+    if not epic_analysis_path(epic).exists() or not read(epic_analysis_path(epic)).strip():
+        if epic_analysis_prompt_path(epic).exists():
+            return "epic-analysis-complete"
+        return "epic-analysis-prepare"
+
+    if current_stage == "epic_analysis_prepare":
+        return "epic-analysis-complete"
+
+    # Design
+    if not epic_design_path(epic).exists() or not read(epic_design_path(epic)).strip():
+        if epic_design_prompt_path(epic).exists():
+            return "epic-design-complete"
+        return "epic-design-prepare"
+
+    if current_stage == "epic_design_prepare":
+        return "epic-design-complete"
+
+    # Fix loop
+    if review_decision in {"request_changes", "block"}:
+        if current_stage == "epic_design_fix_prepare":
+            return "epic-design-fix-complete"
+        return "epic-design-fix-prepare"
+
+    # After fix complete, go back to review
+    if current_stage == "epic_design_fix_complete":
+        return "epic-review-prepare"
+
+    # Review
+    if not epic_review_report_path(epic).exists() or not read(epic_review_report_path(epic)).strip():
+        return "epic-review-prepare"
+
+    if current_stage == "epic_review_prepare":
+        return "epic-review-complete"
+
+    # Breakdown after approved review
+    if review_decision == "approve":
+        if not epic_story_map_path(epic).exists() or not read(epic_story_map_path(epic)).strip():
+            if current_stage == "epic_breakdown_prepare":
+                return "epic-breakdown-complete"
+            return "epic-breakdown-prepare"
+
+        if current_stage == "epic_breakdown_prepare":
+            return "epic-breakdown-complete"
+
+        if list(epic_tickets_dir(epic).glob("*.md")):
+            return "done"
+
+    return "done"
+
+
+def run_named_epic_step(epic: str, step: str) -> None:
+    mapping = {
+        "epic-analysis-prepare": epic_analysis_prepare,
+        "epic-analysis-complete": epic_analysis_complete,
+        "epic-design-prepare": epic_design_prepare,
+        "epic-design-complete": epic_design_complete,
+        "epic-review-prepare": epic_review_prepare,
+        "epic-review-complete": epic_review_complete,
+        "epic-design-fix-prepare": epic_design_fix_prepare,
+        "epic-design-fix-complete": epic_design_fix_complete,
+        "epic-breakdown-prepare": epic_breakdown_prepare,
+        "epic-breakdown-complete": epic_breakdown_complete,
+    }
+    if step == "done":
+        print("Epic looks complete. Review the story map and ticket files.")
+        return
+    if step not in mapping:
+        raise ValueError(f"Unknown epic step: {step}")
+    mapping[step](epic)
+
+
+_EPIC_PREPARE_STEP_PROMPT: Dict[str, object] = {
+    "epic-analysis-prepare": epic_analysis_prompt_path,
+    "epic-design-prepare": epic_design_prompt_path,
+    "epic-design-fix-prepare": epic_design_fix_prompt_path,
+    "epic-review-prepare": epic_review_prompt_path,
+    "epic-breakdown-prepare": epic_breakdown_prompt_path,
+}
+
+
+def epic_next_step(epic: str, execute: bool = False, run_auto: bool = False) -> None:
+    step = epic_next_action(epic)
+    if run_auto or execute:
+        run_named_epic_step(epic, step)
+        if run_auto and step in _EPIC_PREPARE_STEP_PROMPT:
+            prompt_path = _EPIC_PREPARE_STEP_PROMPT[step](epic)  # type: ignore[operator]
+            spawn_claude_wezterm(prompt_path, str(Path.cwd()))
+    else:
+        print(step)
+
+
+def show_epic_status(epic: str) -> None:
+    print(json.dumps(load_epic_status(epic), indent=2, ensure_ascii=False))
+
+
+# ── TICKET WORKFLOW ROUTING ────────────────────────────────────────────────────
+
 def current_outcome(ticket: str) -> Dict[str, Optional[str]]:
     review_decision = None
     qa_decision = None
@@ -1124,6 +1915,45 @@ def build_parser() -> argparse.ArgumentParser:
         help="Execute the next step and automatically open Claude in a new WezTerm tab with the prompt pre-loaded.",
     )
 
+    # ── Epic subcommands ──────────────────────────────────────────────────────
+    p_epic_init = sub.add_parser("epic-init", help="Initialize an epic run.")
+    p_epic_init.add_argument("epic", help="Epic ID, e.g. EPIC-001")
+    p_epic_init.add_argument("requirement", help="Initial epic requirement text")
+    p_epic_init.add_argument(
+        "--domain",
+        default="",
+        help="Optional domain override",
+    )
+
+    for cmd in [
+        "epic-analysis-prepare",
+        "epic-analysis-complete",
+        "epic-design-prepare",
+        "epic-design-complete",
+        "epic-review-prepare",
+        "epic-review-complete",
+        "epic-design-fix-prepare",
+        "epic-design-fix-complete",
+        "epic-breakdown-prepare",
+        "epic-breakdown-complete",
+        "epic-status",
+    ]:
+        p = sub.add_parser(cmd, help=f"Run {cmd}")
+        p.add_argument("epic", help="Epic ID, e.g. EPIC-001")
+
+    p_epic_next = sub.add_parser("epic-next", help="Show or run the next epic step.")
+    p_epic_next.add_argument("epic", help="Epic ID, e.g. EPIC-001")
+    p_epic_next.add_argument(
+        "--run",
+        action="store_true",
+        help="Execute the next epic step instead of only printing it.",
+    )
+    p_epic_next.add_argument(
+        "--run-auto",
+        action="store_true",
+        help="Execute the next epic step and automatically open Claude in a new WezTerm tab.",
+    )
+
     return parser
 
 
@@ -1158,6 +1988,32 @@ def main() -> int:
             show_status(args.ticket)
         elif args.command == "next":
             next_step(args.ticket, execute=args.run, run_auto=args.run_auto)
+        elif args.command == "epic-init":
+            epic_init(args.epic, args.requirement, domain=args.domain)
+        elif args.command == "epic-analysis-prepare":
+            epic_analysis_prepare(args.epic)
+        elif args.command == "epic-analysis-complete":
+            epic_analysis_complete(args.epic)
+        elif args.command == "epic-design-prepare":
+            epic_design_prepare(args.epic)
+        elif args.command == "epic-design-complete":
+            epic_design_complete(args.epic)
+        elif args.command == "epic-review-prepare":
+            epic_review_prepare(args.epic)
+        elif args.command == "epic-review-complete":
+            epic_review_complete(args.epic)
+        elif args.command == "epic-design-fix-prepare":
+            epic_design_fix_prepare(args.epic)
+        elif args.command == "epic-design-fix-complete":
+            epic_design_fix_complete(args.epic)
+        elif args.command == "epic-breakdown-prepare":
+            epic_breakdown_prepare(args.epic)
+        elif args.command == "epic-breakdown-complete":
+            epic_breakdown_complete(args.epic)
+        elif args.command == "epic-status":
+            show_epic_status(args.epic)
+        elif args.command == "epic-next":
+            epic_next_step(args.epic, execute=args.run, run_auto=args.run_auto)
         else:
             parser.print_help()
             return 2

@@ -94,8 +94,7 @@ Each file must follow:
 
 ## Suggested Order
 
-- <number>...
-- <number>...
+<number>
 
 ## Domain
 
