@@ -1,0 +1,33 @@
+{
+  "project_name": "agent-team-template",
+  "default_domain": "workflow",
+  "git": {
+    "base_branch": "main"
+  },
+  "domains": {
+    "workflow": {
+      "paths": [
+        ".ai/bin/",
+        ".ai/agents/",
+        ".ai/templates/",
+        "examples/"
+      ],
+      "skills": {
+        "architect": [
+          ".ai/skills/workflow/python_orchestration/SKILL.md",
+          ".ai/skills/workflow/agent_prompts/SKILL.md"
+        ],
+        "developer": [
+          ".ai/skills/workflow/python_orchestration/SKILL.md",
+          ".ai/skills/workflow/agent_prompts/SKILL.md"
+        ],
+        "reviewer": [
+          ".ai/skills/workflow/workflow_reviewer/SKILL.md"
+        ],
+        "qa": [
+          ".ai/skills/workflow/workflow_qa/SKILL.md"
+        ]
+      }
+    }
+  }
+}
