@@ -1413,17 +1413,15 @@ def epic_design_fix_prepare(epic: str) -> None:
         fail_epic_stage(epic, "epic_design_fix_prepare", "No epic_review.json found")
         raise FileNotFoundError("No epic_review.json found for epic design fix mode")
 
-    # Build fix context before archiving
-    fix_ctx = build_epic_review_fix_context(epic)
-
-    # Archive the review report
+    # Archive the review report (fix context was already written by epic_review_complete)
     archived_review = previous_epic_review_path(epic)
     write(archived_review, read(epic_review_report_path(epic)))
     epic_review_report_path(epic).unlink(missing_ok=True)
     set_epic_artifact(epic, "previous_epic_review", archived_review)
 
+    fix_ctx = epic_review_fix_context_path(epic)
     extra_paths: List[Path] = [archived_review]
-    if fix_ctx:
+    if fix_ctx.exists():
         extra_paths.append(fix_ctx)
 
     task_instruction = f"""Work inside the current repository.
@@ -1607,15 +1605,17 @@ def epic_next_action(epic: str) -> str:
     if current_stage == "epic_design_prepare":
         return "epic-design-complete"
 
-    # Fix loop
-    if review_decision in {"request_changes", "block"}:
-        if current_stage == "epic_design_fix_prepare":
-            return "epic-design-fix-complete"
-        return "epic-design-fix-prepare"
+    # Fix loop — check current_stage first, before reading review_decision,
+    # because epic_design_fix_prepare deletes epic_review.json which makes
+    # review_decision None, causing the review_decision guard to miss this branch.
+    if current_stage == "epic_design_fix_prepare":
+        return "epic-design-fix-complete"
 
-    # After fix complete, go back to review
     if current_stage == "epic_design_fix_complete":
         return "epic-review-prepare"
+
+    if review_decision in {"request_changes", "block"}:
+        return "epic-design-fix-prepare"
 
     # Review
     if not epic_review_report_path(epic).exists() or not read(epic_review_report_path(epic)).strip():
@@ -1630,9 +1630,6 @@ def epic_next_action(epic: str) -> str:
             if current_stage == "epic_breakdown_prepare":
                 return "epic-breakdown-complete"
             return "epic-breakdown-prepare"
-
-        if current_stage == "epic_breakdown_prepare":
-            return "epic-breakdown-complete"
 
         if list(epic_tickets_dir(epic).glob("*.md")):
             return "done"
