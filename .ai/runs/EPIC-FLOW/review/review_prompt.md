@@ -165,6 +165,21 @@ Read these files:
 - .ai/runs/EPIC-flow/architect/assumptions.md
 - .ai/runs/EPIC-flow/dev/implementation_report.md
 
+This is a follow-up review after a developer fix round.
+
+Also read these files:
+- .ai/runs/EPIC-flow/fix/previous_review_report.json
+- .ai/runs/EPIC-flow/fix/review_fix_context.md
+
+Follow-up review rules:
+- Verify whether previous review issues were fixed
+- Do not repeat already fixed issues
+- Keep only unresolved previous issues
+- Add any new issues introduced by the fixes
+- In the summary, explicitly state whether previous high-severity issues were resolved
+- Treat this as a verification pass, not a blind fresh review
+
+
 Git review context:
 - Compare the current branch against main
 - Review the effective ticket delta, including committed changes

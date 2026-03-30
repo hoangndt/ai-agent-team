@@ -1,9 +1,9 @@
 {
   "ticket": "EPIC-FLOW",
   "domain": "workflow",
-  "current_stage": "dev_fix_prepare",
+  "current_stage": "review_prepare",
   "state": "ready",
-  "updated_at": "2026-03-30T09:13:36",
+  "updated_at": "2026-03-30T09:17:27",
   "artifacts": {
     "input": ".ai/runs/EPIC-FLOW/input/input.md",
     "architect_prompt": ".ai/runs/EPIC-flow/architect/architect_prompt.md",
@@ -59,10 +59,16 @@
       "status": "done",
       "time": "2026-03-30T09:13:36",
       "note": "Generated dev-fix prompt."
+    },
+    {
+      "stage": "review_prepare",
+      "status": "done",
+      "time": "2026-03-30T09:17:27",
+      "note": "Generated review prompt."
     }
   ],
   "runner": {
     "mode": "file_referenced_prompts",
-    "last_command": "dev-fix-prepare"
+    "last_command": "review-prepare"
   }
 }
