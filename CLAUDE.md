@@ -102,12 +102,12 @@ This only triggers for prepare steps: `architect-prepare`, `dev-prepare`, `dev-f
 
 If the Reviewer returns `request_changes` or `block`, or QA returns `fail`, the workflow enters a fix cycle:
 
-| Step                     | CLI command                 | Your job                                      |
-| ------------------------ | --------------------------- | --------------------------------------------- |
-| Dev Fix Prepare          | `dev-fix-prepare <TICKET>`  | (generates fix prompt with review/qa context) |
-| **Developer**            | _(paste prompt)_            | Fix issues, update implementation_report.md   |
-| Dev Fix Complete         | `dev-fix-complete <TICKET>` | (verifies report)                             |
-| → back to Review Prepare |                             |                                               |
+| Step                     | CLI command                 | Your job                                                                   |
+| ------------------------ | --------------------------- | -------------------------------------------------------------------------- |
+| Dev Fix Prepare          | `dev-fix-prepare <TICKET>`  | (generates fix prompt with review/qa context)                              |
+| **Developer**            | _(paste prompt)_            | Fix issues, **append** a new fix-round section to implementation_report.md |
+| Dev Fix Complete         | `dev-fix-complete <TICKET>` | (verifies report)                                                          |
+| → back to Review Prepare |                             |                                                                            |
 
 Previous reports are archived to `fix/previous_review_report.json` and `fix/previous_qa_report.json`. Follow-up reviews check whether prior issues were resolved.
 
@@ -128,6 +128,8 @@ The workflow is **done** when review decision is `approve` and QA decision is `p
 
 - Code changes directly in the repo
 - `dev/implementation_report.md` — summary, files modified, decisions, tests run
+  - On initial dev: write the full report
+  - On each fix round: **append** a new `## Fix Round N` section; never erase previous rounds
 
 ## Reviewer writes
 

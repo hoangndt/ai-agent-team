@@ -1,0 +1,32 @@
+{
+  "decision": "pass",
+  "missing_tests": [
+    {
+      "scenario": "epic-design-fix-prepare when epic_review_fix_context.md is absent",
+      "detail": "If build_epic_review_fix_context silently failed during epic_review_complete (e.g. review JSON had no 'issues' key), the fix prompt is generated without review context. The code checks if the context file exists before appending it but does not warn or error — the designer gets a fix prompt with no reviewer feedback."
+    },
+    {
+      "scenario": "Multiple fix rounds overwrite previous_epic_review.json",
+      "detail": "The second fix round archives the new review report to previous_epic_review.json, silently overwriting the first round's archived report. No test covers the two-cycle fix loop; the assumption notes this as an unresolved unknown."
+    },
+    {
+      "scenario": "epic_review_complete decision not stored as top-level status.json field",
+      "detail": "AC4 states 'Extracts and records the decision field in status'. The implementation records the decision only in the history note string ('Epic reviewer decision: approve'), not as a dedicated top-level key. Functionally harmless since epic_current_review_decision reads from epic_review.json directly, but the status.json does not satisfy the literal AC criterion."
+    }
+  ],
+  "risks": [
+    {
+      "severity": "low",
+      "detail": "WezTerm not available: epic_next_step with --run-auto falls through to spawn_claude_wezterm, which was not explicitly smoke-tested for the epic flow. Existing behavior degrades gracefully (prints warning), but this code path is untested for epic prepare steps specifically."
+    },
+    {
+      "severity": "low",
+      "detail": "Epic skill config unknown: No epic role skills are defined in project_config.json. The get_epic_role_skills fallback is silently empty per assumption 4. If a skill file is added later with a bad path, the error surface is a KeyError or FileNotFoundError at prompt generation time with no dedicated validation."
+    },
+    {
+      "severity": "low",
+      "detail": "Assumption 3 (can fix loop run >1 time): previous_epic_review.json is overwritten each cycle. This is acceptable per the pragmatic decision noted in assumptions, but it means a reviewer in round 2 cannot see round 1 review context without additional tooling."
+    }
+  ],
+  "summary": "The implementation satisfies all acceptance criteria. The routing bug fix (epic_next_action checking current_stage before review_decision) is correct and verified by manual smoke test. All complete steps guard against empty files. The fix loop, breakdown gate, and error states are all present and correct. Three minor gaps exist: no warning when fix context is missing from the fix prompt; multiple fix rounds silently lose prior review history; and the review decision is not stored as a top-level status.json key (it lives only in a history note). None of these constitute a release blocker. Decision: pass."
+}

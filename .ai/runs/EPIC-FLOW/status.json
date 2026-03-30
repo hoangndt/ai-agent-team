@@ -1,0 +1,96 @@
+{
+  "ticket": "EPIC-FLOW",
+  "domain": "workflow",
+  "current_stage": "qa_complete",
+  "state": "ready",
+  "updated_at": "2026-03-30T09:24:22",
+  "artifacts": {
+    "input": ".ai/runs/EPIC-FLOW/input/input.md",
+    "architect_prompt": ".ai/runs/EPIC-flow/architect/architect_prompt.md",
+    "task_spec": ".ai/runs/EPIC-flow/architect/task_spec.md",
+    "design_note": ".ai/runs/EPIC-flow/architect/design_note.md",
+    "acceptance_criteria": ".ai/runs/EPIC-flow/architect/acceptance_criteria.md",
+    "assumptions": ".ai/runs/EPIC-flow/architect/assumptions.md",
+    "dev_prompt": ".ai/runs/EPIC-flow/dev/dev_prompt.md",
+    "implementation_report": ".ai/runs/EPIC-flow/dev/implementation_report.md",
+    "review_prompt": ".ai/runs/EPIC-flow/review/review_prompt.md",
+    "review_fix_context": ".ai/runs/EPIC-flow/fix/review_fix_context.md",
+    "previous_review_report": ".ai/runs/EPIC-flow/fix/previous_review_report.json",
+    "dev_fix_prompt": ".ai/runs/EPIC-flow/fix/dev_fix_prompt.md",
+    "review_report": ".ai/runs/EPIC-flow/review/review_report.json",
+    "qa_prompt": ".ai/runs/EPIC-flow/qa/qa_prompt.md",
+    "qa_report": ".ai/runs/EPIC-flow/qa/qa_report.json",
+    "qa_fix_context": ".ai/runs/EPIC-flow/fix/qa_fix_context.md"
+  },
+  "history": [
+    {
+      "stage": "init",
+      "status": "done",
+      "time": "2026-03-30T08:44:51"
+    },
+    {
+      "stage": "architect_prepare",
+      "status": "done",
+      "time": "2026-03-30T08:48:22",
+      "note": "Generated architect prompt."
+    },
+    {
+      "stage": "architect_complete",
+      "status": "done",
+      "time": "2026-03-30T09:00:58",
+      "note": "Architect files verified."
+    },
+    {
+      "stage": "dev_prepare",
+      "status": "done",
+      "time": "2026-03-30T09:01:00",
+      "note": "Generated dev prompt."
+    },
+    {
+      "stage": "dev_complete",
+      "status": "done",
+      "time": "2026-03-30T09:09:16",
+      "note": "Implementation report verified."
+    },
+    {
+      "stage": "review_prepare",
+      "status": "done",
+      "time": "2026-03-30T09:09:18",
+      "note": "Generated review prompt."
+    },
+    {
+      "stage": "dev_fix_prepare",
+      "status": "done",
+      "time": "2026-03-30T09:13:36",
+      "note": "Generated dev-fix prompt."
+    },
+    {
+      "stage": "review_prepare",
+      "status": "done",
+      "time": "2026-03-30T09:17:27",
+      "note": "Generated review prompt."
+    },
+    {
+      "stage": "review_complete",
+      "status": "done",
+      "time": "2026-03-30T09:20:41",
+      "note": "Reviewer decision: approve"
+    },
+    {
+      "stage": "qa_prepare",
+      "status": "done",
+      "time": "2026-03-30T09:20:43",
+      "note": "Generated QA prompt."
+    },
+    {
+      "stage": "qa_complete",
+      "status": "done",
+      "time": "2026-03-30T09:24:22",
+      "note": "QA decision: pass"
+    }
+  ],
+  "runner": {
+    "mode": "file_referenced_prompts",
+    "last_command": "qa-complete"
+  }
+}
