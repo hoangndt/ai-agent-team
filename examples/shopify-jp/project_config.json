@@ -1,0 +1,81 @@
+{
+  "project_name": "shopify-template-jp",
+  "default_domain": "storefront",
+  "git": {
+    "base_branch": "main"
+  },
+  "domains": {
+    "storefront": {
+      "paths": [
+        "theme/scripts/",
+        "theme/styles/",
+        "theme/assets/",
+        "theme/config/",
+        "theme/layout/",
+        "theme/locales/",
+        "theme/sections/",
+        "theme/snippets/",
+        "theme/templates/"
+      ],
+      "skills": {
+        "architect": [
+          ".ai/skills/storefront/shopify_liquid/SKILL.md",
+          ".ai/skills/storefront/tailwind/SKILL.md",
+          ".ai/skills/storefront/javascript/SKILL.md"
+        ],
+        "developer": [
+          ".ai/skills/storefront/shopify_liquid/SKILL.md",
+          ".ai/skills/storefront/tailwind/SKILL.md",
+          ".ai/skills/storefront/javascript/SKILL.md"
+        ],
+        "reviewer": [
+          ".ai/skills/storefront/storefront_reviewer/SKILL.md"
+        ],
+        "qa": [
+          ".ai/skills/storefront/storefront_qa/SKILL.md"
+        ]
+      }
+    },
+    "extensions": {
+      "paths": [
+        "apps/emma-jp-all-in-one-custom-app/extensions/",
+        "apps/jp-custom-discount-app/extensions/"
+      ],
+      "skills": {
+        "architect": [
+          ".ai/skills/extensions/shopify_ui_extension/SKILL.md",
+          ".ai/skills/extensions/shopify_functions/SKILL.md"
+        ],
+        "developer": [
+          ".ai/skills/extensions/shopify_ui_extension/SKILL.md",
+          ".ai/skills/extensions/shopify_functions/SKILL.md"
+        ],
+        "reviewer": [
+          ".ai/skills/extensions/extensions_reviewer/SKILL.md"
+        ],
+        "qa": [
+          ".ai/skills/extensions/extensions_qa/SKILL.md"
+        ]
+      }
+    },
+    "e2e": {
+      "paths": [
+        "e2e/"
+      ],
+      "skills": {
+        "architect": [
+          ".ai/skills/e2e/playwright_checkly/SKILL.md"
+        ],
+        "developer": [
+          ".ai/skills/e2e/playwright_checkly/SKILL.md"
+        ],
+        "reviewer": [
+          ".ai/skills/e2e/playwright_checkly/SKILL.md"
+        ],
+        "qa": [
+          ".ai/skills/e2e/playwright_checkly/SKILL.md"
+        ]
+      }
+    }
+  }
+}
