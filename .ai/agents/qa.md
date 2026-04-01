@@ -49,3 +49,4 @@ Rules:
 - Prefer concrete missing scenarios over generic advice
 - Keep the output concise and practical
 - If assumptions create test uncertainty, mention that explicitly in risks
+- If Figma design references are included in the prompt, use them as part of the validation baseline for visible UI structure and important user-facing states

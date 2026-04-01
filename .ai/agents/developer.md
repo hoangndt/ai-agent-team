@@ -20,6 +20,7 @@ Your work should:
 - Follow current code style and structure
 - Avoid unnecessary refactors outside the ticket scope
 - Keep risk low unless the ticket explicitly requires broader changes
+- If Figma design references are included in the prompt, inspect them first and use them to guide implementation structure and visible UI fidelity
 
 When the prompt asks for a report file, write a concise implementation report that includes:
 

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import argparse
 import json
+import re
 import subprocess
 import sys
 import time
@@ -11,6 +12,10 @@ from typing import Dict, List, Optional
 BASE = Path(".ai")
 RUNS = BASE / "runs"
 AGENTS = BASE / "agents"
+FIGMA_URL_RE = re.compile(
+    r"https?://(?:www\.)?figma\.com/(?:file|design|proto)/[^\s)>\\\]]+",
+    re.IGNORECASE,
+)
 
 
 def now() -> str:
@@ -485,6 +490,93 @@ def load_skill_contents(paths: List[Path]) -> str:
         chunks.append(f"## Skill: {path.parent.name}\n\n{content}")
     return "\n\n".join(chunks)
 
+def extract_figma_urls(text: str) -> List[str]:
+    if not text:
+        return []
+    urls = FIGMA_URL_RE.findall(text)
+    seen = set()
+    result: List[str] = []
+    for url in urls:
+        normalized = url.strip().rstrip(".,;")
+        if normalized not in seen:
+            seen.add(normalized)
+            result.append(normalized)
+    return result
+
+
+def get_ticket_figma_urls(ticket: str) -> List[str]:
+    return extract_figma_urls(read(input_file(ticket)))
+
+
+def get_figma_skill_paths(role: str) -> List[Path]:
+    base = BASE / "skills" / "common" / "figma"
+
+    role_map = {
+        "architect": base / "architect" / "SKILL.md",
+        "developer": base / "developer" / "SKILL.md",
+        "reviewer": base / "reviewer" / "SKILL.md",
+        "qa": base / "qa" / "SKILL.md",
+    }
+
+    paths = [base / "base" / "SKILL.md"]
+    role_path = role_map.get(role)
+    if role_path:
+        paths.append(role_path)
+
+    return paths
+
+
+def dedupe_paths(paths: List[Path]) -> List[Path]:
+    seen = set()
+    result: List[Path] = []
+    for path in paths:
+        key = path.as_posix()
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(path)
+    return result
+
+
+def get_effective_role_skills(ticket: str, role: str) -> List[Path]:
+    paths = list(get_role_skills(ticket, role))
+
+    figma_urls = get_ticket_figma_urls(ticket)
+    if figma_urls:
+        paths.extend(get_figma_skill_paths(role))
+
+    return dedupe_paths(paths)
+
+
+def build_figma_context(ticket: str) -> str:
+    figma_urls = get_ticket_figma_urls(ticket)
+    if not figma_urls:
+        return ""
+
+    lines = [
+        "# Figma Context",
+        "This ticket includes Figma design references.",
+        "Use the configured Figma MCP to inspect the linked design before producing your output.",
+        "Treat Figma as an important source of truth for visible UI structure when available.",
+        "",
+        "Figma URLs:",
+    ]
+
+    for url in figma_urls:
+        lines.append(f"- {url}")
+
+    lines.extend(
+        [
+            "",
+            "Important:",
+            "- Inspect Figma before writing the main output.",
+            "- If Figma inspection is partial or fails, state that explicitly and continue with best-effort assumptions.",
+            "- Summarize relevant findings instead of dumping raw Figma output.",
+        ]
+    )
+
+    return "\n".join(lines)
+
 
 def build_project_context(ticket: str) -> str:
     config = load_project_config()
@@ -512,7 +604,9 @@ def build_role_prompt(ticket: str, role: str, task_instruction: str) -> str:
     }
     role_prompt = require_agent_file(role_file_map[role])
     project_context = build_project_context(ticket)
-    skill_content = load_skill_contents(get_role_skills(ticket, role))
+    skill_content = load_skill_contents(get_effective_role_skills(ticket, role))
+    figma_context = build_figma_context(ticket)
+
     parts = [
         "# Role Instruction",
         role_prompt,
@@ -520,8 +614,13 @@ def build_role_prompt(ticket: str, role: str, task_instruction: str) -> str:
         "# Project Context",
         project_context,
     ]
+
     if skill_content:
         parts.extend(["", "# Domain Skills", skill_content])
+
+    if figma_context:
+        parts.extend(["", figma_context])
+
     parts.extend(["", "# Task Instruction", task_instruction.strip()])
     return "\n".join(parts) + "\n"
 

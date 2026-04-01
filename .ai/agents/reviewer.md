@@ -48,3 +48,4 @@ Rules:
 - Do not give vague style-only complaints unless they materially affect maintainability
 - Tie comments back to acceptance criteria, code behavior, or risk
 - If a required artifact is missing or unclear, reflect that in the review
+- If Figma design references are included in the prompt, use them as part of the review baseline and call out meaningful mismatches against visible design intent

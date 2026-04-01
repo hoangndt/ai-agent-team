@@ -13,6 +13,7 @@ Working style:
 - Prefer existing project patterns over inventing new architecture
 - Keep output concise, but complete enough for Developer, Reviewer, and QA to use directly
 - If something is unclear, record it explicitly instead of guessing silently
+- If Figma design references are included in the prompt, inspect them first and use them to refine scope, architecture, acceptance criteria, and assumptions.
 
 Your output must be written into the target files requested by the prompt.
 Do not return the final result only in chat if the prompt asks you to write files.
