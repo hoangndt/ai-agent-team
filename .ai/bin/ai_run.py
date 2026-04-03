@@ -297,11 +297,11 @@ def init_status(ticket: str, domain: str) -> Dict:
     }
 
 
-def init_epic_status(epic: str, domain: str) -> Dict:
+def init_epic_status(epic: str, domains: List[str]) -> Dict:
     ts = now()
     return {
         "epic": epic,
-        "domain": domain,
+        "domains": domains,
         "current_stage": "init",
         "state": "ready",
         "updated_at": ts,
@@ -721,36 +721,62 @@ def build_qa_fix_context(ticket: str) -> Optional[Path]:
     return path
 
 
-def get_epic_domain(epic: str) -> str:
+def get_epic_domains(epic: str) -> List[str]:
     s = load_epic_status(epic)
-    if s.get("domain"):
-        return s["domain"]
-    return load_project_config().get("default_domain", "workflow")
+    if "domains" in s:
+        return s["domains"]
+    if "domain" in s:
+        return [s["domain"]]
+    return list(load_project_config().get("domains", {}).keys())
+
+
+def get_epic_domain(epic: str) -> str:
+    """Backward-compat shim — returns the first domain from get_epic_domains.
+
+    Raises ValueError if no domains are available (empty config and no status entry).
+    Callers that do config.get('domains', {}).get(domain, {}) would silently receive
+    an empty dict if this returned ""; raising here makes the failure explicit.
+    """
+    domains = get_epic_domains(epic)
+    if not domains:
+        raise ValueError(
+            f"No domains found for epic '{epic}'. "
+            "Check status.json and project_config.json to ensure at least one domain is defined."
+        )
+    return domains[0]
 
 
 def build_epic_project_context(epic: str) -> str:
     config = load_project_config()
-    domain = get_epic_domain(epic)
-    domain_cfg = config.get("domains", {}).get(domain, {})
+    domains = get_epic_domains(epic)
     lines = [
         f"Project: {config.get('project_name', 'Unknown')}",
-        f"Domain: {domain}",
+        f"Domains: {', '.join(domains)}",
         f"Base branch: {get_base_branch()}",
     ]
-    paths = domain_cfg.get("paths", [])
-    if paths:
+    seen_paths: List[str] = []
+    for domain in domains:
+        domain_cfg = config.get("domains", {}).get(domain, {})
+        for p in domain_cfg.get("paths", []):
+            if p not in seen_paths:
+                seen_paths.append(p)
+    if seen_paths:
         lines.append("Relevant paths:")
-        for p in paths:
+        for p in seen_paths:
             lines.append(f"- {p}")
     return "\n".join(lines)
 
 
 def get_epic_role_skills(epic: str, role: str) -> List[Path]:
     config = load_project_config()
-    domain = get_epic_domain(epic)
-    domain_cfg = config.get("domains", {}).get(domain, {})
-    skill_paths = domain_cfg.get("skills", {}).get(role, [])
-    return [Path(p) for p in skill_paths]
+    domains = get_epic_domains(epic)
+    seen: List[str] = []
+    for domain in domains:
+        domain_cfg = config.get("domains", {}).get(domain, {})
+        for p in domain_cfg.get("skills", {}).get(role, []):
+            if p not in seen:
+                seen.append(p)
+    return [Path(p) for p in seen]
 
 
 def build_epic_role_prompt(epic: str, role: str, task_instruction: str) -> str:
@@ -1285,17 +1311,34 @@ def qa_complete(ticket: str) -> None:
 
 # ── EPIC WORKFLOW ──────────────────────────────────────────────────────────────
 
-def epic_init(epic: str, requirement: str, domain: str = "") -> None:
+def epic_init(epic: str, requirement: str, domains: str = "") -> None:
     ensure_base_dirs()
     config = load_project_config()
-    resolved_domain = domain or config.get("default_domain", "workflow")
+
+    resolved_domains = [d.strip() for d in domains.split(",") if d.strip()]
+    if not resolved_domains:
+        resolved_domains = list(config.get("domains", {}).keys())
+
+    valid_domains = set(config.get("domains", {}).keys())
+    if resolved_domains:
+        # Validate regardless of whether any valid domains exist in the config.
+        # An empty config means there are no valid domains, so any explicit request
+        # for a specific domain must be rejected with a clear error.
+        unknown = [d for d in resolved_domains if d not in valid_domains]
+        if unknown:
+            valid_label = ", ".join(sorted(valid_domains)) if valid_domains else "(none defined in project_config.json)"
+            print(
+                f"[ERROR] Unknown domain(s): {', '.join(unknown)}. "
+                f"Valid domains: {valid_label}"
+            )
+            sys.exit(1)
 
     ensure_epic_dirs(epic)
 
     write(epic_input_file(epic), requirement.strip() + "\n")
-    save_epic_status(epic, init_epic_status(epic, resolved_domain))
+    save_epic_status(epic, init_epic_status(epic, resolved_domains))
     set_epic_artifact(epic, "epic_input", epic_input_file(epic))
-    print(f"[OK] Initialized epic {epic} at {epic_path(epic)} (domain={resolved_domain})")
+    print(f"[OK] Initialized epic {epic} at {epic_path(epic)} (domains={resolved_domains})")
 
 
 def epic_analysis_prepare(epic: str) -> None:
@@ -1662,6 +1705,38 @@ def epic_breakdown_complete(epic: str) -> None:
             "The epic_planner must write at least one *.md file there."
         )
 
+    # AC-7: verify each ticket file has a non-empty ## Domain section
+    initialized_domains = set(get_epic_domains(epic))
+    domain_errors = []
+    for tf in ticket_files:
+        content = tf.read_text(encoding="utf-8")
+        # Find ## Domain header and extract the value on the next non-blank line
+        domain_value = ""
+        lines = content.splitlines()
+        for i, line in enumerate(lines):
+            if line.strip().lower().startswith("## domain"):
+                # collect lines after the header until the next ## heading or EOF
+                for j in range(i + 1, len(lines)):
+                    stripped = lines[j].strip()
+                    if stripped.startswith("#"):
+                        break
+                    if stripped:
+                        domain_value = stripped
+                        break
+                break
+        if not domain_value:
+            domain_errors.append(f"  {tf.name}: missing or empty '## Domain' section")
+        elif initialized_domains and domain_value not in initialized_domains:
+            domain_errors.append(
+                f"  {tf.name}: '## Domain' value '{domain_value}' is not one of the "
+                f"initialized domains ({', '.join(sorted(initialized_domains))})"
+            )
+
+    if domain_errors:
+        msg = "Ticket file(s) failed ## Domain validation:\n" + "\n".join(domain_errors)
+        fail_epic_stage(epic, "epic_breakdown_complete", msg)
+        raise ValueError(msg)
+
     set_epic_artifact(epic, "epic_story_map", epic_story_map_path(epic))
     set_epic_artifact(epic, "epic_tickets_dir", epic_tickets_dir(epic))
 
@@ -2016,9 +2091,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_epic_init.add_argument("epic", help="Epic ID, e.g. EPIC-001")
     p_epic_init.add_argument("requirement", help="Initial epic requirement text")
     p_epic_init.add_argument(
+        "--domains",
+        default="",
+        metavar="DOMAINS",
+        help="Comma-separated domains, e.g. backend,frontend. Defaults to all domains in config.",
+    )
+    p_epic_init.add_argument(
         "--domain",
         default="",
-        help="Optional domain override",
+        metavar="DOMAIN",
+        help="[DEPRECATED] Use --domains instead. Kept for backward compatibility.",
     )
 
     for cmd in [
@@ -2085,7 +2167,13 @@ def main() -> int:
         elif args.command == "next":
             next_step(args.ticket, execute=args.run, run_auto=args.run_auto)
         elif args.command == "epic-init":
-            epic_init(args.epic, args.requirement, domain=args.domain)
+            domains_arg = args.domains
+            if not domains_arg and getattr(args, "domain", ""):
+                print(
+                    "[DEPRECATED] --domain is deprecated for epic-init; use --domains instead."
+                )
+                domains_arg = args.domain
+            epic_init(args.epic, args.requirement, domains=domains_arg)
         elif args.command == "epic-analysis-prepare":
             epic_analysis_prepare(args.epic)
         elif args.command == "epic-analysis-complete":

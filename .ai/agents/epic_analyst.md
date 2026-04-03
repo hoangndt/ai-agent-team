@@ -57,15 +57,21 @@ Write directly to:
 
 - Teams, systems, or users impacted
 
-## 7. Dependencies
+## 7. Cross-Domain Dependencies
+
+If multiple domains are listed in the project context, explicitly identify:
+- Which domains each goal or scope item touches
+- Where hand-off or integration between domains occurs
+
+## 8. External Dependencies
 
 - External systems, APIs, teams
 
-## 8. Key Risks
+## 9. Key Risks
 
 - Major uncertainties or failure points
 
-## 9. Assumptions / Unknowns
+## 10. Assumptions / Unknowns
 
 - Things that are unclear or inferred
 

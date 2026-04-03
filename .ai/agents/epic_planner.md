@@ -98,7 +98,9 @@ Each file must follow:
 
 ## Domain
 
-backend|frontend|...
+Must be set to one of the domains listed in the project context (e.g. backend, frontend, workflow).
+A ticket may only belong to a single domain. Use cross-cutting notes to explain
+integrations when a ticket touches multiple domains.
 
 ## Notes
 
