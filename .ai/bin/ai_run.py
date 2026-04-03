@@ -17,6 +17,23 @@ FIGMA_URL_RE = re.compile(
     re.IGNORECASE,
 )
 
+KNOWN_SUBCOMMANDS = frozenset({
+    "init", "next", "status",
+    "architect-prepare", "architect-complete",
+    "architect-review-prepare", "architect-review-complete",
+    "architect-fix-prepare", "architect-fix-complete",
+    "dev-prepare", "dev-complete", "dev-fix-prepare", "dev-fix-complete",
+    "review-prepare", "review-complete",
+    "qa-prepare", "qa-complete",
+    "epic-init", "epic-next", "epic-status",
+    "epic-analysis-prepare", "epic-analysis-complete",
+    "epic-design-prepare", "epic-design-complete",
+    "epic-review-prepare", "epic-review-complete",
+    "epic-design-fix-prepare", "epic-design-fix-complete",
+    "epic-breakdown-prepare", "epic-breakdown-complete",
+    "ticket", "epic",
+})
+
 
 def now() -> str:
     return datetime.now().isoformat(timespec="seconds")
@@ -2427,6 +2444,51 @@ def show_status(ticket: str) -> None:
     print(json.dumps(load_status(ticket), indent=2, ensure_ascii=False))
 
 
+def maybe_init_and_run(
+    id: str,
+    kind: str,
+    run_dir: Path,
+    inline_req: Optional[str],
+    no_prompt: bool,
+    run_auto: bool,
+    init_fn,
+    next_fn,
+    init_kwargs: dict,
+) -> None:
+    if not run_dir.exists():
+        if no_prompt and not inline_req:
+            print(
+                "Error: --no-prompt requires an inline requirement argument when the directory does not exist.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        if not no_prompt:
+            try:
+                answer = input(f"{kind} not found. Initialize new {kind.lower()}? [Y/n]").strip().lower()
+            except EOFError:
+                print(
+                    "[ERROR] No input available. Use --no-prompt with an inline requirement.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            if answer == "n":
+                print("[ABORTED]")
+                return
+        if inline_req:
+            requirement = inline_req
+        else:
+            try:
+                requirement = input("Enter requirement: ").strip()
+            except EOFError:
+                print(
+                    "[ERROR] No input available. Use --no-prompt with an inline requirement.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+        init_fn(id, requirement, **init_kwargs)
+    next_fn(id, execute=True, run_auto=run_auto)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Reusable file-referenced prepare/complete workflow for local AI agent team."
@@ -2521,15 +2583,83 @@ def build_parser() -> argparse.ArgumentParser:
         help="Execute the next epic step and automatically open Claude in a new WezTerm tab.",
     )
 
+    # ── Shortcut subcommands ──────────────────────────────────────────────────
+    p_ticket = sub.add_parser("ticket", help="Run ticket workflow shortcuts.")
+    p_ticket.add_argument("ticket_id", help="Ticket ID, e.g. TICKET-123")
+    p_ticket.add_argument(
+        "requirement",
+        nargs="?",
+        default=None,
+        help="Inline requirement (used during initialization; ignored if directory exists)",
+    )
+    p_ticket.add_argument("--next", action="store_true", help="Advance to the next step only.")
+    p_ticket.add_argument(
+        "--auto",
+        action="store_true",
+        help="Automatically open Claude in a new WezTerm tab with the prompt pre-loaded.",
+    )
+    p_ticket.add_argument("--no-prompt", action="store_true", help="Skip confirmation prompts.")
+    p_ticket.add_argument("--domain", default="", help="Domain override, e.g. backend or frontend.")
+
+    p_epic_shortcut = sub.add_parser("epic", help="Run epic workflow shortcuts.")
+    p_epic_shortcut.add_argument("epic_id", help="Epic ID, e.g. EPIC-001")
+    p_epic_shortcut.add_argument(
+        "requirement",
+        nargs="?",
+        default=None,
+        help="Inline requirement (used during initialization; ignored if directory exists)",
+    )
+    p_epic_shortcut.add_argument("--next", action="store_true", help="Advance to the next step only.")
+    p_epic_shortcut.add_argument(
+        "--auto",
+        action="store_true",
+        help="Automatically open Claude in a new WezTerm tab with the prompt pre-loaded.",
+    )
+    p_epic_shortcut.add_argument("--no-prompt", action="store_true", help="Skip confirmation prompts.")
+    p_epic_shortcut.add_argument(
+        "--domains",
+        default="",
+        metavar="DOMAINS",
+        help="Comma-separated domains, e.g. backend,frontend.",
+    )
+
     return parser
 
 
 def main() -> int:
-    parser = build_parser()
-    args = parser.parse_args()
+    # Positional shortcut: ai_run.py <TICKET> [inline_req]
+    _positional = (
+        len(sys.argv) >= 2
+        and not sys.argv[1].startswith("-")
+        and sys.argv[1] not in KNOWN_SUBCOMMANDS
+    )
+    if not _positional:
+        parser = build_parser()
+        args = parser.parse_args()
 
     try:
-        if args.command == "init":
+        if _positional:
+            ticket_id = sys.argv[1]
+            inline_req = sys.argv[2] if len(sys.argv) > 2 else None
+            if inline_req and inline_req.startswith("-"):
+                print(
+                    f"[ERROR] Flags are not supported in positional mode. "
+                    f"Use 'ai_run.py ticket {ticket_id} ...' for flag support.",
+                    file=sys.stderr,
+                )
+                return 1
+            maybe_init_and_run(
+                id=ticket_id,
+                kind="Ticket",
+                run_dir=RUNS / ticket_id,
+                inline_req=inline_req,
+                no_prompt=False,
+                run_auto=False,
+                init_fn=init_ticket,
+                next_fn=next_step,
+                init_kwargs={},
+            )
+        elif args.command == "init":
             init_ticket(args.ticket, args.requirement, domain=args.domain)
         elif args.command == "architect-prepare":
             architect_prepare(args.ticket)
@@ -2595,6 +2725,36 @@ def main() -> int:
             show_epic_status(args.epic)
         elif args.command == "epic-next":
             epic_next_step(args.epic, execute=args.run, run_auto=args.run_auto)
+        elif args.command == "ticket":
+            if args.next:
+                next_step(args.ticket_id, execute=True, run_auto=args.auto)
+            else:
+                maybe_init_and_run(
+                    id=args.ticket_id,
+                    kind="Ticket",
+                    run_dir=RUNS / args.ticket_id,
+                    inline_req=args.requirement,
+                    no_prompt=args.no_prompt,
+                    run_auto=args.auto,
+                    init_fn=init_ticket,
+                    next_fn=next_step,
+                    init_kwargs={"domain": args.domain},
+                )
+        elif args.command == "epic":
+            if args.next:
+                epic_next_step(args.epic_id, execute=True, run_auto=args.auto)
+            else:
+                maybe_init_and_run(
+                    id=args.epic_id,
+                    kind="Epic",
+                    run_dir=EPICS / args.epic_id,
+                    inline_req=args.requirement,
+                    no_prompt=args.no_prompt,
+                    run_auto=args.auto,
+                    init_fn=epic_init,
+                    next_fn=epic_next_step,
+                    init_kwargs={"domains": args.domains},
+                )
         else:
             parser.print_help()
             return 2
