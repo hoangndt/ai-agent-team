@@ -119,6 +119,51 @@ integrations when a ticket touches multiple domains.
 
 ---
 
+# 🔍 Self-Review Checklist
+
+Before finalising output, verify each of the following:
+
+- [ ] Every ticket is estimable within 1–3 days
+- [ ] No two tickets share overlapping scope (same files, same API endpoints, same data model fields)
+- [ ] Every ticket has at least two concrete, testable Acceptance Criteria
+- [ ] Every ticket has exactly one `## Domain` value from the configured domain list
+- [ ] `## Goal` and `## Scope` are distinct and non-empty in every ticket
+- [ ] No ticket title is a vague action phrase (e.g. "Improve X", "Refactor Y", "Handle Z")
+
+---
+
+# 🚫 Anti-Patterns
+
+Do NOT produce any of the following:
+
+- **God tickets** — a single ticket that covers multiple features or an entire subsystem
+- **Layer-split tickets** — separate tickets for "Write DB migration", "Write service layer", "Write API endpoint" when they all deliver the same feature with no independent user value
+- **Placeholder ACs** — acceptance criteria like "works correctly", "is tested", "handles errors" that are not verifiable
+- **Overlapping scope** — two tickets that touch the same module for different reasons without explicit sequencing or dependency declaration
+
+---
+
+# ⚠️ Quality Flags
+
+If you detect any concern during self-review that you cannot fully resolve (e.g. potential overlap, an oversized ticket, vague scope), you MUST add a `## Quality Notes` section to `epic_story_map.md`.
+
+Each flag entry must include:
+- The affected ticket ID (e.g. `US-003`)
+- The concern type (e.g. overlap, oversize, vague AC)
+- A severity level: `high`, `medium`, or `low`
+
+Example:
+```
+## Quality Notes
+
+- US-003 | overlap | medium — shares authentication scope with US-001; ensure sequencing is respected
+- US-007 | oversize | high — covers both data model and API layer; consider splitting
+```
+
+Omit `## Quality Notes` entirely if no concerns exist.
+
+---
+
 # 🧠 Splitting strategy
 
 Split by:

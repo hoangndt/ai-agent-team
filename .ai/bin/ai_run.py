@@ -1656,23 +1656,47 @@ Write the story map directly to:
 Write individual ticket files directly to:
 - {tickets_dir.as_posix()}/<US-NNN-short-slug>.md
 
-Story map requirements:
+## Story Map Requirements
+
 1. List all user stories in priority order
 2. Group stories by theme or functional area
-3. Estimate rough complexity (S/M/L/XL) for each story
-4. Note dependencies between stories
+3. Note dependencies between stories
+4. If any quality concerns are detected (overlap, oversize, vague AC), add a `## Quality Notes` section listing each issue with: ticket ID, concern type, and severity (high/medium/low)
 
-Ticket file requirements (one file per story):
+## Ticket File Requirements
+
 - Filename format: US-NNN-<slug>.md (e.g. US-001-add-cli-commands.md)
-- Each file must include:
-  1. Title
-  2. User story (As a... I want... So that...)
-  3. Acceptance criteria (numbered list)
-  4. Out of scope
-  5. Estimated complexity
-  6. Dependencies (if any)
+- Each ticket file MUST contain all of the following sections using exact `##` level headers:
 
-Important:
+  ```
+  ## Summary
+  ## Goal
+  ## Scope
+  ## Out of Scope
+  ## Acceptance Criteria
+  ## Dependencies
+  ## Suggested Order
+  ## Domain
+  ## Notes
+  ```
+
+- `## Goal` — must be non-empty; state what this ticket achieves
+- `## Scope` — must be non-empty; list exactly what is included
+- `## Acceptance Criteria` — must contain at least two concrete, testable criteria (not placeholders like "works correctly")
+- `## Domain` — must be set to one of the configured project domains
+
+## Quality Requirements
+
+Before writing output, apply the self-review checklist:
+- Every ticket is estimable within 1–3 days
+- No two tickets share overlapping scope (same files, same API endpoints, same data model fields)
+- Every ticket has at least two concrete, testable Acceptance Criteria
+- `## Goal` and `## Scope` are distinct and non-empty in every ticket
+- No ticket title is a vague action phrase (e.g. "Improve X", "Refactor Y")
+- Do NOT produce god tickets (covering multiple features) or layer-split tickets without independent user value
+
+## Important
+
 - Write the story map and all ticket files directly.
 - Do not reply in chat with the final content.
 - Create at least one ticket file in {tickets_dir.as_posix()}.
@@ -1734,6 +1758,35 @@ def epic_breakdown_complete(epic: str) -> None:
 
     if domain_errors:
         msg = "Ticket file(s) failed ## Domain validation:\n" + "\n".join(domain_errors)
+        fail_epic_stage(epic, "epic_breakdown_complete", msg)
+        raise ValueError(msg)
+
+    # Validate ## Goal, ## Scope, ## Acceptance Criteria are non-empty in each ticket
+    def _section_is_non_empty(lines: list, header: str) -> bool:
+        """Return True if the named ## section exists and has at least one non-blank line."""
+        header_lower = header.lower()
+        in_section = False
+        for line in lines:
+            if line.strip().lower() == header_lower:
+                in_section = True
+                continue
+            if in_section:
+                if line.strip().startswith("##"):
+                    return False  # reached next section without content
+                if line.strip():
+                    return True  # found non-blank content
+        return False
+
+    section_errors = []
+    required_sections = ["## Goal", "## Scope", "## Acceptance Criteria"]
+    for tf in ticket_files:
+        lines = tf.read_text(encoding="utf-8").splitlines()
+        for section in required_sections:
+            if not _section_is_non_empty(lines, section):
+                section_errors.append(f"  {tf.name}: missing or empty '{section}' section")
+
+    if section_errors:
+        msg = "Ticket file(s) failed section validation:\n" + "\n".join(section_errors)
         fail_epic_stage(epic, "epic_breakdown_complete", msg)
         raise ValueError(msg)
 
