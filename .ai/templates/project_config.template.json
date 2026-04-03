@@ -1,0 +1,13 @@
+{
+  "project_name": "<PROJECT_NAME>",
+  "default_domain": "default",
+  "git": {
+    "base_branch": "main"
+  },
+  "domains": {
+    "default": {
+      "paths": [],
+      "skills": {}
+    }
+  }
+}
