@@ -110,6 +110,26 @@ def previous_qa_report_path(ticket: str) -> Path:
     return fix_dir(ticket) / "previous_qa_report.json"
 
 
+def architect_review_prompt_path(ticket: str) -> Path:
+    return architect_dir(ticket) / "architect_review_prompt.md"
+
+
+def architect_review_report_path(ticket: str) -> Path:
+    return architect_dir(ticket) / "architect_review.json"
+
+
+def architect_fix_prompt_path(ticket: str) -> Path:
+    return fix_dir(ticket) / "architect_fix_prompt.md"
+
+
+def architect_fix_context_path(ticket: str) -> Path:
+    return fix_dir(ticket) / "architect_fix_context.md"
+
+
+def previous_architect_review_path(ticket: str) -> Path:
+    return fix_dir(ticket) / "previous_architect_review.json"
+
+
 def review_prompt_path(ticket: str) -> Path:
     return review_dir(ticket) / "review_prompt.md"
 
@@ -598,13 +618,16 @@ def build_project_context(ticket: str) -> str:
 def build_role_prompt(ticket: str, role: str, task_instruction: str) -> str:
     role_file_map = {
         "architect": "architect.md",
+        "architect_reviewer": "architect_reviewer.md",
         "developer": "developer.md",
         "reviewer": "reviewer.md",
         "qa": "qa.md",
     }
+    # architect_reviewer uses the same domain skills as architect (per A-7)
+    skills_role = "architect" if role == "architect_reviewer" else role
     role_prompt = require_agent_file(role_file_map[role])
     project_context = build_project_context(ticket)
-    skill_content = load_skill_contents(get_effective_role_skills(ticket, role))
+    skill_content = load_skill_contents(get_effective_role_skills(ticket, skills_role))
     figma_context = build_figma_context(ticket)
 
     parts = [
@@ -719,6 +742,56 @@ def build_qa_fix_context(ticket: str) -> Optional[Path]:
     write(path, "\n".join(lines).strip() + "\n")
     set_artifact(ticket, "qa_fix_context", path)
     return path
+
+
+def build_architect_fix_context(ticket: str) -> Optional[Path]:
+    path = architect_review_report_path(ticket)
+    if not path.exists() or not read(path).strip():
+        return None
+
+    try:
+        review = json.loads(read(path))
+    except Exception:
+        return None
+
+    issues = review.get("issues", [])
+    if not isinstance(issues, list):
+        issues = []
+
+    buckets: Dict[str, list] = {"high": [], "medium": [], "low": [], "unknown": []}
+    for item in issues:
+        sev = str(item.get("severity", "unknown")).lower()
+        if sev not in buckets:
+            sev = "unknown"
+        buckets[sev].append(item)
+
+    lines = [
+        "# Architect Review Fix Context",
+        "",
+        "Use this file to fix architect review findings and update the design artifacts.",
+        "",
+        f"Reviewer decision: {review.get('decision', 'unknown')}",
+        "",
+    ]
+
+    for sev in ["high", "medium", "low", "unknown"]:
+        if not buckets[sev]:
+            continue
+        lines.append(f"## {sev.capitalize()} Severity Issues")
+        for idx, issue in enumerate(buckets[sev], start=1):
+            area = issue.get("area", issue.get("file", "unknown"))
+            lines.append(f"{idx}. Area: {area}")
+            lines.append(f"   Issue: {str(issue.get('message', '')).strip()}")
+        lines.append("")
+
+    summary = str(review.get("summary", "")).strip()
+    if summary:
+        lines.extend(["## Reviewer Summary", summary, ""])
+
+    ctx_path = architect_fix_context_path(ticket)
+    write(ctx_path, "\n".join(lines).strip() + "\n")
+    set_artifact(ticket, "architect_fix_context", ctx_path)
+    return ctx_path
 
 
 def get_epic_domains(epic: str) -> List[str]:
@@ -911,6 +984,225 @@ def architect_complete(ticket: str) -> None:
 
     complete_stage(ticket, "architect_complete", "Architect files verified.")
     print(f"[OK] Architect files verified for {ticket}")
+
+
+def architect_review_prepare(ticket: str) -> None:
+    update_stage(ticket, "architect_review_prepare")
+    set_runner(ticket, "architect-review-prepare")
+
+    required_inputs = [
+        task_spec_path(ticket),
+        design_note_path(ticket),
+        acceptance_criteria_path(ticket),
+        assumptions_path(ticket),
+    ]
+    ensure_non_empty_files(required_inputs, "architect_review_prepare", ticket)
+
+    followup_mode = (
+        previous_architect_review_path(ticket).exists()
+        and read(previous_architect_review_path(ticket)).strip()
+    )
+
+    followup_block = ""
+    if followup_mode:
+        extra_files = [previous_architect_review_path(ticket)]
+        if (
+            architect_fix_context_path(ticket).exists()
+            and read(architect_fix_context_path(ticket)).strip()
+        ):
+            extra_files.append(architect_fix_context_path(ticket))
+
+        followup_block = f"""
+
+This is a follow-up review after an architect fix round.
+
+Also read these files:
+{file_ref_list(extra_files)}
+
+Follow-up review rules:
+- Verify whether previous review issues were addressed in the updated design artifacts
+- Do not repeat already fixed issues
+- Keep only unresolved previous issues
+- Add any new issues introduced by the revisions
+- In the summary, explicitly state whether previous high-severity issues were resolved
+"""
+
+    task_instruction = f"""Work inside the current repository.
+
+Read these files:
+{file_ref_list(required_inputs)}{followup_block}
+
+Review the architect design artifacts for correctness, completeness, and alignment with the requirement.
+
+Write valid JSON only directly to:
+- {architect_review_report_path(ticket).as_posix()}
+
+Required JSON format:
+{{
+  "decision": "approve|request_changes|block",
+  "issues": [
+    {{
+      "severity": "high|medium|low",
+      "area": "...",
+      "message": "..."
+    }}
+  ],
+  "summary": "..."
+}}
+
+Review focus areas:
+- Design correctness: Is the proposed approach sound and implementable?
+- Scope completeness: Does the task_spec cover everything needed? Are out-of-scope items clear?
+- Acceptance criteria quality: Are criteria testable and unambiguous? Are failure cases covered?
+- Assumption validity: Are assumptions reasonable? Are unknowns clearly called out?
+- Missing edge cases: Are there scenarios the design doesn't address?
+- Over/under-specification: Is the design too vague or too prescriptive?
+
+Decision guidance:
+- approve: Design is solid, criteria are testable, assumptions are reasonable, no important gaps
+- request_changes: There are meaningful gaps but they are fixable within the current approach
+- block: The design has severe flaws, dangerous assumptions, or is fundamentally misaligned with the requirement
+
+Rules:
+- List high severity issues first
+- Tie findings to correctness, completeness, or feasibility
+- Prefer concrete, actionable comments
+
+Important:
+- Do not reply in chat with the final JSON.
+- Write the JSON directly to the target file.
+"""
+    prompt = build_role_prompt(ticket, "architect_reviewer", task_instruction)
+    write(architect_review_prompt_path(ticket), prompt)
+    set_artifact(ticket, "architect_review_prompt", architect_review_prompt_path(ticket))
+    complete_stage(ticket, "architect_review_prepare", "Generated architect review prompt.")
+    print(f"[OK] Wrote {architect_review_prompt_path(ticket)}")
+    print(
+        "[NEXT] Paste this prompt into Claude/Copilot. Let it write architect_review.json directly, then run next --run."
+    )
+
+
+def architect_review_complete(ticket: str) -> None:
+    update_stage(ticket, "architect_review_complete")
+    set_runner(ticket, "architect-review-complete")
+
+    ensure_non_empty_files(
+        [architect_review_report_path(ticket)], "architect_review_complete", ticket
+    )
+
+    try:
+        parsed = json.loads(read(architect_review_report_path(ticket)))
+    except json.JSONDecodeError as exc:
+        fail_stage(ticket, "architect_review_complete", f"Invalid JSON in architect_review.json: {exc}")
+        raise
+
+    write(
+        architect_review_report_path(ticket),
+        json.dumps(parsed, indent=2, ensure_ascii=False) + "\n",
+    )
+    set_artifact(ticket, "architect_review_report", architect_review_report_path(ticket))
+
+    decision = parsed.get("decision", "unknown")
+
+    if decision not in {"approve", "request_changes", "block"}:
+        print(
+            f"[WARN] Unexpected architect review decision: '{decision}'. "
+            "Treating as request_changes (safe default). Fix the JSON if this is wrong.",
+            file=sys.stderr,
+        )
+
+    if decision in {"request_changes", "block"}:
+        # Archive review and build fix context
+        fix_dir(ticket).mkdir(parents=True, exist_ok=True)
+        archived = previous_architect_review_path(ticket)
+        write(archived, read(architect_review_report_path(ticket)))
+        set_artifact(ticket, "previous_architect_review", archived)
+        build_architect_fix_context(ticket)
+        complete_stage(
+            ticket, "architect_review_complete", f"Architect reviewer decision: {decision} — fix loop required"
+        )
+        print(f"[OK] Architect review verified for {ticket} ({decision})")
+        print("[FIX] Decision requires changes. Run next --run to start architect fix loop.")
+    else:
+        complete_stage(ticket, "architect_review_complete", f"Architect reviewer decision: {decision}")
+        print(f"[OK] Architect review verified for {ticket} ({decision})")
+
+
+def architect_fix_prepare(ticket: str) -> None:
+    update_stage(ticket, "architect_fix_prepare")
+    set_runner(ticket, "architect-fix-prepare")
+
+    required_inputs = [
+        input_file(ticket),
+        task_spec_path(ticket),
+        design_note_path(ticket),
+        acceptance_criteria_path(ticket),
+        assumptions_path(ticket),
+    ]
+    ensure_non_empty_files(required_inputs, "architect_fix_prepare", ticket)
+
+    fix_ctx = architect_fix_context_path(ticket)
+    extra_paths: List[Path] = []
+    if fix_ctx.exists() and read(fix_ctx).strip():
+        extra_paths.append(fix_ctx)
+
+    prev_review = previous_architect_review_path(ticket)
+    if prev_review.exists() and read(prev_review).strip():
+        extra_paths.append(prev_review)
+
+    task_instruction = f"""Work inside the current repository.
+
+Read these files:
+{file_ref_list(required_inputs + extra_paths)}
+
+Your task is to revise the architect design artifacts to address all review findings.
+
+Fix rules:
+- Resolve all high severity issues identified in the review
+- Address medium and low severity issues where feasible
+- Do NOT redesign from scratch — revise the existing design artifacts
+- Preserve sections that were not flagged as problematic
+- Be explicit in the artifacts about how each major issue was addressed
+- Do NOT write production code in this step
+
+Overwrite the design artifacts with the corrected versions:
+- {task_spec_path(ticket).as_posix()}
+- {design_note_path(ticket).as_posix()}
+- {acceptance_criteria_path(ticket).as_posix()}
+- {assumptions_path(ticket).as_posix()}
+
+Important:
+- Write the updated artifacts directly to the files above.
+- Do not reply in chat with the final content.
+- Only modify files needed to address the review findings.
+"""
+    prompt = build_role_prompt(ticket, "architect", task_instruction)
+    write(architect_fix_prompt_path(ticket), prompt)
+    set_artifact(ticket, "architect_fix_prompt", architect_fix_prompt_path(ticket))
+    complete_stage(ticket, "architect_fix_prepare", "Generated architect fix prompt.")
+    print(f"[OK] Wrote {architect_fix_prompt_path(ticket)}")
+    print(
+        "[NEXT] Paste this prompt into Claude/Copilot. Let it update the design artifacts, then run next --run."
+    )
+
+
+def architect_fix_complete(ticket: str) -> None:
+    update_stage(ticket, "architect_fix_complete")
+    set_runner(ticket, "architect-fix-complete")
+
+    required = [
+        task_spec_path(ticket),
+        design_note_path(ticket),
+        acceptance_criteria_path(ticket),
+        assumptions_path(ticket),
+    ]
+    ensure_non_empty_files(required, "architect_fix_complete", ticket)
+
+    # Clear previous architect review so next_action routes to architect-review-prepare
+    architect_review_report_path(ticket).unlink(missing_ok=True)
+
+    complete_stage(ticket, "architect_fix_complete", "Architect fix artifacts verified.")
+    print(f"[OK] Architect fix verified for {ticket}")
 
 
 def dev_prepare(ticket: str) -> None:
@@ -1949,6 +2241,40 @@ def next_action(ticket: str) -> str:
     if current_stage == "architect_prepare":
         return "architect-complete"
 
+    # Architect review gate
+    # Check fix stages first (architect_review.json may still hold an old decision)
+    if current_stage == "architect_fix_prepare":
+        return "architect-fix-complete"
+
+    if current_stage == "architect_fix_complete":
+        return "architect-review-prepare"
+
+    arch_review = architect_review_report_path(ticket)
+    arch_review_exists = arch_review.exists() and read(arch_review).strip()
+
+    if not arch_review_exists:
+        if current_stage == "architect_review_prepare":
+            return "architect-review-complete"
+        return "architect-review-prepare"
+
+    if current_stage == "architect_review_prepare":
+        return "architect-review-complete"
+
+    arch_review_decision = None
+    try:
+        arch_review_decision = json.loads(read(arch_review)).get("decision")
+    except Exception:
+        return "architect-review-prepare"
+
+    if arch_review_decision in {"request_changes", "block"}:
+        return "architect-fix-prepare"
+
+    if arch_review_decision != "approve":
+        # Unknown decision — safe default: treat as fix needed
+        return "architect-fix-prepare"
+
+    # arch_review_decision == "approve" → proceed to dev workflow
+
     # Review fail -> fix loop
     if outcome["review"] in {"request_changes", "block"}:
         if current_stage == "dev_fix_prepare":
@@ -2011,6 +2337,10 @@ def run_named_step(ticket: str, step: str) -> None:
     mapping = {
         "architect-prepare": architect_prepare,
         "architect-complete": architect_complete,
+        "architect-review-prepare": architect_review_prepare,
+        "architect-review-complete": architect_review_complete,
+        "architect-fix-prepare": architect_fix_prepare,
+        "architect-fix-complete": architect_fix_complete,
         "dev-prepare": dev_prepare,
         "dev-fix-prepare": dev_fix_prepare,
         "dev-fix-complete": dev_fix_complete,
@@ -2030,6 +2360,8 @@ def run_named_step(ticket: str, step: str) -> None:
 
 _PREPARE_STEP_PROMPT: Dict[str, object] = {
     "architect-prepare": architect_prompt_path,
+    "architect-review-prepare": architect_review_prompt_path,
+    "architect-fix-prepare": architect_fix_prompt_path,
     "dev-prepare": dev_prompt_path,
     "dev-fix-prepare": dev_fix_prompt_path,
     "review-prepare": review_prompt_path,
@@ -2113,6 +2445,10 @@ def build_parser() -> argparse.ArgumentParser:
     for cmd in [
         "architect-prepare",
         "architect-complete",
+        "architect-review-prepare",
+        "architect-review-complete",
+        "architect-fix-prepare",
+        "architect-fix-complete",
         "dev-prepare",
         "dev-fix-prepare",
         "dev-fix-complete",
@@ -2199,6 +2535,14 @@ def main() -> int:
             architect_prepare(args.ticket)
         elif args.command == "architect-complete":
             architect_complete(args.ticket)
+        elif args.command == "architect-review-prepare":
+            architect_review_prepare(args.ticket)
+        elif args.command == "architect-review-complete":
+            architect_review_complete(args.ticket)
+        elif args.command == "architect-fix-prepare":
+            architect_fix_prepare(args.ticket)
+        elif args.command == "architect-fix-complete":
+            architect_fix_complete(args.ticket)
         elif args.command == "dev-prepare":
             dev_prepare(args.ticket)
         elif args.command == "dev-fix-prepare":
