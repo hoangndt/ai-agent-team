@@ -2139,12 +2139,8 @@ def epic_generate_tickets(epic: str, init_dirs: bool = False) -> None:
             continue
 
         try:
-            if init_dirs:
-                ensure_ticket_dirs(run_ticket)
-            else:
-                target.parent.mkdir(parents=True, exist_ok=True)
             content = tf.read_text(encoding="utf-8")
-            write(target, content)
+            init_ticket(run_ticket, content)
             print(f"[OK] {ticket_id}")
             created += 1
         except Exception as e:
@@ -2530,6 +2526,8 @@ def maybe_init_and_run(
                 )
                 sys.exit(1)
         init_fn(id, requirement, **init_kwargs)
+        print(f"[OK] Initialized {id}. Run 'next {id} --run' when ready.")
+        return
     next_fn(id, execute=True, run_auto=run_auto)
 
 
