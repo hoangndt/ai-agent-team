@@ -31,6 +31,7 @@ KNOWN_SUBCOMMANDS = frozenset({
     "epic-review-prepare", "epic-review-complete",
     "epic-design-fix-prepare", "epic-design-fix-complete",
     "epic-breakdown-prepare", "epic-breakdown-complete",
+    "epic-generate-tickets",
     "ticket", "epic",
 })
 
@@ -2110,6 +2111,49 @@ def epic_breakdown_complete(epic: str) -> None:
     print(f"[OK] Epic breakdown verified for {epic} ({len(ticket_files)} ticket(s))")
 
 
+def epic_generate_tickets(epic: str, init_dirs: bool = False) -> None:
+    epic_root = epic_path(epic)
+    if not epic_root.exists():
+        print(f"[ERROR] Epic '{epic}' not found at {epic_root.as_posix()}", file=sys.stderr)
+        sys.exit(1)
+
+    tickets_dir = epic_tickets_dir(epic)
+    ticket_files = sorted(tickets_dir.glob("*.md")) if tickets_dir.exists() else []
+    if not ticket_files:
+        print(
+            f"[ERROR] No ticket files found in {tickets_dir.as_posix()}. "
+            "Run epic-breakdown-complete first.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    created = skipped = errors = 0
+    for tf in ticket_files:
+        ticket_id = tf.stem
+        run_ticket = f"{epic}-{ticket_id}"
+        target = input_file(run_ticket)
+
+        if target.exists() and target.read_text(encoding="utf-8").strip():
+            print(f"[SKIP] {ticket_id}")
+            skipped += 1
+            continue
+
+        try:
+            if init_dirs:
+                ensure_ticket_dirs(run_ticket)
+            else:
+                target.parent.mkdir(parents=True, exist_ok=True)
+            content = tf.read_text(encoding="utf-8")
+            write(target, content)
+            print(f"[OK] {ticket_id}")
+            created += 1
+        except Exception as e:
+            print(f"[ERROR] {ticket_id}: {e}")
+            errors += 1
+
+    print(f"Created: {created}  Skipped: {skipped}  Errors: {errors}")
+
+
 def epic_current_review_decision(epic: str) -> Optional[str]:
     try:
         if epic_review_report_path(epic).exists():
@@ -2570,6 +2614,10 @@ def build_parser() -> argparse.ArgumentParser:
         p = sub.add_parser(cmd, help=f"Run {cmd}")
         p.add_argument("epic", help="Epic ID, e.g. EPIC-001")
 
+    p_gen = sub.add_parser("epic-generate-tickets", help="Scaffold input.md for each epic breakdown ticket.")
+    p_gen.add_argument("epic", help="Epic ID, e.g. EPIC-001")
+    p_gen.add_argument("--init-dirs", action="store_true", help="Also create full run directory structure for each ticket.")
+
     p_epic_next = sub.add_parser("epic-next", help="Show or run the next epic step.")
     p_epic_next.add_argument("epic", help="Epic ID, e.g. EPIC-001")
     p_epic_next.add_argument(
@@ -2721,6 +2769,8 @@ def main() -> int:
             epic_breakdown_prepare(args.epic)
         elif args.command == "epic-breakdown-complete":
             epic_breakdown_complete(args.epic)
+        elif args.command == "epic-generate-tickets":
+            epic_generate_tickets(args.epic, init_dirs=args.init_dirs)
         elif args.command == "epic-status":
             show_epic_status(args.epic)
         elif args.command == "epic-next":
