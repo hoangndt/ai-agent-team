@@ -2466,7 +2466,11 @@ def spawn_claude_wezterm(
         input=prompt_text,
         text=True,
     )
-    print(f"[AUTO] Prompt pasted into pane {pane_id}. Press Enter in Claude to submit.")
+    subprocess.run(
+        ["osascript", "-e", 'tell application "System Events" to key code 36'],
+        capture_output=True,
+    )
+    print(f"[AUTO] Prompt sent and Enter keystroke fired for pane {pane_id}. Claude is processing.")
 
 
 def next_step(ticket: str, execute: bool = False, run_auto: bool = False) -> None:
