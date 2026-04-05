@@ -2427,7 +2427,7 @@ _PREPARE_STEP_PROMPT: Dict[str, object] = {
 
 
 def spawn_claude_wezterm(
-    prompt_path: Path, cwd: str, wait_seconds: float = 4.0
+    prompt_path: Path, cwd: str, wait_seconds: float = 1.0
 ) -> None:
     result = subprocess.run(
         [
@@ -2466,6 +2466,7 @@ def spawn_claude_wezterm(
         input=prompt_text,
         text=True,
     )
+    time.sleep(wait_seconds)
     subprocess.run(
         ["osascript", "-e", 'tell application "System Events" to key code 36'],
         capture_output=True,
