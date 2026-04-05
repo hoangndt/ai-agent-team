@@ -12,13 +12,18 @@ from typing import Dict, List, Optional
 BASE = Path(".ai")
 RUNS = BASE / "runs"
 AGENTS = BASE / "agents"
-AUTOFLOW_SENTINEL = "[AGENT_COMPLETE]"
-_SENTINEL_INSTRUCTION = (
-    "---\n"
-    "IMPORTANT: After you have finished writing all required output files, "
-    "print exactly the following on its own line and nothing else after it:\n"
-    + AUTOFLOW_SENTINEL
-)
+def make_sentinel(run_id: str) -> str:
+    return f"[AGENT_COMPLETE:{run_id}]"
+
+
+def make_sentinel_instruction(run_id: str) -> str:
+    sentinel = make_sentinel(run_id)
+    return (
+        "---\n"
+        "IMPORTANT: After you have finished writing all required output files, "
+        "print exactly the following on its own line and nothing else after it:\n"
+        + sentinel
+    )
 FIGMA_URL_RE = re.compile(
     r"https?://(?:www\.)?figma\.com/(?:file|design|proto)/[^\s)>\\\]]+",
     re.IGNORECASE,
@@ -2526,7 +2531,6 @@ def get_autoflow_config() -> Dict:
     return {
         "poll_interval": float(autoflow.get("poll_interval_seconds", 15)),
         "timeout": float(autoflow.get("timeout_seconds", 1800)),
-        "startup_wait": float(autoflow.get("startup_wait_seconds", 30)),
     }
 
 
@@ -2535,11 +2539,14 @@ def wait_for_sentinel(
     sentinel: str,
     poll_interval: float,
     timeout: float,
-    startup_wait: float = 30.0,
 ) -> bool:
-    if startup_wait > 0:
-        print(f"[WAIT] Waiting {startup_wait:.0f}s for Claude to start up...")
-        time.sleep(startup_wait)
+    baseline_result = subprocess.run(
+        ["wezterm", "cli", "get-text", "--pane-id", pane_id],
+        capture_output=True,
+        text=True,
+    )
+    baseline_count = baseline_result.stdout.count(sentinel) if baseline_result.returncode == 0 else 0
+
     elapsed = 0.0
     while elapsed < timeout:
         result = subprocess.run(
@@ -2547,7 +2554,7 @@ def wait_for_sentinel(
             capture_output=True,
             text=True,
         )
-        if result.returncode == 0 and sentinel in result.stdout:
+        if result.returncode == 0 and result.stdout.count(sentinel) > baseline_count:
             print(f"[WAIT] Sentinel detected after {elapsed:.0f}s. Claude finished.")
             return True
         print(f"[WAIT] Waiting for Claude to finish... ({elapsed:.0f}s elapsed)")
@@ -2560,7 +2567,6 @@ def run_ticket_autoflow(ticket: str) -> None:
     cfg = get_autoflow_config()
     poll_interval = cfg["poll_interval"]
     timeout = cfg["timeout"]
-    startup_wait = cfg["startup_wait"]
 
     print(
         f"[AUTOFLOW] Starting ticket autoflow for {ticket} "
@@ -2583,14 +2589,14 @@ def run_ticket_autoflow(ticket: str) -> None:
                 sys.exit(1)
             prompt_path = _PREPARE_STEP_PROMPT[step](ticket)  # type: ignore[operator]
             pane_id = spawn_claude_wezterm(
-                prompt_path, str(Path.cwd()), sentinel_instruction=_SENTINEL_INSTRUCTION
+                prompt_path, str(Path.cwd()), sentinel_instruction=make_sentinel_instruction(ticket)
             )
 
             if pane_id is None:
                 print("[ERROR] WezTerm spawn failed. Stopping autoflow.", file=sys.stderr)
                 sys.exit(1)
 
-            success = wait_for_sentinel(pane_id, AUTOFLOW_SENTINEL, poll_interval, timeout, startup_wait)
+            success = wait_for_sentinel(pane_id, make_sentinel(ticket), poll_interval, timeout)
 
             if not success:
                 print(
@@ -2621,7 +2627,6 @@ def run_epic_autoflow(epic: str) -> None:
     cfg = get_autoflow_config()
     poll_interval = cfg["poll_interval"]
     timeout = cfg["timeout"]
-    startup_wait = cfg["startup_wait"]
 
     print(
         f"[AUTOFLOW] Starting epic autoflow for {epic} "
@@ -2644,14 +2649,14 @@ def run_epic_autoflow(epic: str) -> None:
                 sys.exit(1)
             prompt_path = _EPIC_PREPARE_STEP_PROMPT[step](epic)  # type: ignore[operator]
             pane_id = spawn_claude_wezterm(
-                prompt_path, str(Path.cwd()), sentinel_instruction=_SENTINEL_INSTRUCTION
+                prompt_path, str(Path.cwd()), sentinel_instruction=make_sentinel_instruction(epic)
             )
 
             if pane_id is None:
                 print("[ERROR] WezTerm spawn failed. Stopping autoflow.", file=sys.stderr)
                 sys.exit(1)
 
-            success = wait_for_sentinel(pane_id, AUTOFLOW_SENTINEL, poll_interval, timeout, startup_wait)
+            success = wait_for_sentinel(pane_id, make_sentinel(epic), poll_interval, timeout)
 
             if not success:
                 print(
