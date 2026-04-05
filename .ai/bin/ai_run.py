@@ -12,6 +12,13 @@ from typing import Dict, List, Optional
 BASE = Path(".ai")
 RUNS = BASE / "runs"
 AGENTS = BASE / "agents"
+AUTOFLOW_SENTINEL = "[AGENT_COMPLETE]"
+_SENTINEL_INSTRUCTION = (
+    "---\n"
+    "IMPORTANT: After you have finished writing all required output files, "
+    "print exactly the following on its own line and nothing else after it:\n"
+    + AUTOFLOW_SENTINEL
+)
 FIGMA_URL_RE = re.compile(
     r"https?://(?:www\.)?figma\.com/(?:file|design|proto)/[^\s)>\\\]]+",
     re.IGNORECASE,
@@ -2425,9 +2432,30 @@ _PREPARE_STEP_PROMPT: Dict[str, object] = {
     "qa-prepare": qa_prompt_path,
 }
 
+_PREPARE_TO_COMPLETE: Dict[str, str] = {
+    "architect-prepare":        "architect-complete",
+    "architect-review-prepare": "architect-review-complete",
+    "architect-fix-prepare":    "architect-fix-complete",
+    "dev-prepare":              "dev-complete",
+    "dev-fix-prepare":          "dev-fix-complete",
+    "review-prepare":           "review-complete",
+    "qa-prepare":               "qa-complete",
+}
+
+_EPIC_PREPARE_TO_COMPLETE: Dict[str, str] = {
+    "epic-analysis-prepare":   "epic-analysis-complete",
+    "epic-design-prepare":     "epic-design-complete",
+    "epic-design-fix-prepare": "epic-design-fix-complete",
+    "epic-review-prepare":     "epic-review-complete",
+    "epic-breakdown-prepare":  "epic-breakdown-complete",
+}
+
 
 def spawn_claude_wezterm(
-    prompt_path: Path, cwd: str, wait_seconds: float = 1.0
+    prompt_path: Path,
+    cwd: str,
+    wait_seconds: float = 1.0,
+    sentinel_instruction: Optional[str] = None,
 ) -> Optional[str]:
     result = subprocess.run(
         [
@@ -2461,6 +2489,8 @@ def spawn_claude_wezterm(
     time.sleep(wait_seconds)
 
     prompt_text = prompt_path.read_text(encoding="utf-8").rstrip("\n")
+    if sentinel_instruction:
+        prompt_text = prompt_text + "\n\n" + sentinel_instruction
     subprocess.run(
         ["wezterm", "cli", "send-text", "--pane-id", pane_id, "--no-paste"],
         input=prompt_text,
@@ -2496,23 +2526,31 @@ def get_autoflow_config() -> Dict:
     return {
         "poll_interval": float(autoflow.get("poll_interval_seconds", 15)),
         "timeout": float(autoflow.get("timeout_seconds", 1800)),
+        "startup_wait": float(autoflow.get("startup_wait_seconds", 30)),
     }
 
 
-def wait_for_step_advance(
-    run_id: str,
-    current_step: str,
+def wait_for_sentinel(
+    pane_id: str,
+    sentinel: str,
     poll_interval: float,
     timeout: float,
-    action_fn,
+    startup_wait: float = 30.0,
 ) -> bool:
+    if startup_wait > 0:
+        print(f"[WAIT] Waiting {startup_wait:.0f}s for Claude to start up...")
+        time.sleep(startup_wait)
     elapsed = 0.0
     while elapsed < timeout:
-        new_step = action_fn(run_id)
-        if new_step != current_step:
-            print(f"[WAIT] Step advanced: {current_step} -> {new_step} ({elapsed:.0f}s elapsed)")
+        result = subprocess.run(
+            ["wezterm", "cli", "get-text", "--pane-id", pane_id],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0 and sentinel in result.stdout:
+            print(f"[WAIT] Sentinel detected after {elapsed:.0f}s. Claude finished.")
             return True
-        print(f"[WAIT] Polling for {current_step} completion... ({elapsed:.0f}s elapsed)")
+        print(f"[WAIT] Waiting for Claude to finish... ({elapsed:.0f}s elapsed)")
         time.sleep(poll_interval)
         elapsed += poll_interval
     return False
@@ -2522,6 +2560,7 @@ def run_ticket_autoflow(ticket: str) -> None:
     cfg = get_autoflow_config()
     poll_interval = cfg["poll_interval"]
     timeout = cfg["timeout"]
+    startup_wait = cfg["startup_wait"]
 
     print(
         f"[AUTOFLOW] Starting ticket autoflow for {ticket} "
@@ -2543,25 +2582,33 @@ def run_ticket_autoflow(ticket: str) -> None:
                 print(f"[ERROR] Prepare step '{step}' failed: {exc}", file=sys.stderr)
                 sys.exit(1)
             prompt_path = _PREPARE_STEP_PROMPT[step](ticket)  # type: ignore[operator]
-            pane_id = spawn_claude_wezterm(prompt_path, str(Path.cwd()))
+            pane_id = spawn_claude_wezterm(
+                prompt_path, str(Path.cwd()), sentinel_instruction=_SENTINEL_INSTRUCTION
+            )
 
             if pane_id is None:
                 print("[ERROR] WezTerm spawn failed. Stopping autoflow.", file=sys.stderr)
                 sys.exit(1)
 
-            try:
-                success = wait_for_step_advance(
-                    ticket, step, poll_interval, timeout, action_fn=next_action
-                )
-            finally:
-                close_wezterm_pane(pane_id)
+            success = wait_for_sentinel(pane_id, AUTOFLOW_SENTINEL, poll_interval, timeout, startup_wait)
 
             if not success:
                 print(
-                    f"[ERROR] Timeout waiting for Claude to complete {step}. Stopping autoflow.",
+                    f"[ERROR] Timeout waiting for Claude ({step}). Stopping.",
                     file=sys.stderr,
                 )
+                close_wezterm_pane(pane_id)
                 sys.exit(1)
+
+            complete_step = _PREPARE_TO_COMPLETE[step]
+            try:
+                run_named_step(ticket, complete_step)
+            except Exception as exc:
+                print(f"[ERROR] Complete step '{complete_step}' failed: {exc}", file=sys.stderr)
+                close_wezterm_pane(pane_id)
+                sys.exit(1)
+
+            close_wezterm_pane(pane_id)
         else:
             try:
                 run_named_step(ticket, step)
@@ -2574,6 +2621,7 @@ def run_epic_autoflow(epic: str) -> None:
     cfg = get_autoflow_config()
     poll_interval = cfg["poll_interval"]
     timeout = cfg["timeout"]
+    startup_wait = cfg["startup_wait"]
 
     print(
         f"[AUTOFLOW] Starting epic autoflow for {epic} "
@@ -2595,25 +2643,33 @@ def run_epic_autoflow(epic: str) -> None:
                 print(f"[ERROR] Prepare step '{step}' failed: {exc}", file=sys.stderr)
                 sys.exit(1)
             prompt_path = _EPIC_PREPARE_STEP_PROMPT[step](epic)  # type: ignore[operator]
-            pane_id = spawn_claude_wezterm(prompt_path, str(Path.cwd()))
+            pane_id = spawn_claude_wezterm(
+                prompt_path, str(Path.cwd()), sentinel_instruction=_SENTINEL_INSTRUCTION
+            )
 
             if pane_id is None:
                 print("[ERROR] WezTerm spawn failed. Stopping autoflow.", file=sys.stderr)
                 sys.exit(1)
 
-            try:
-                success = wait_for_step_advance(
-                    epic, step, poll_interval, timeout, action_fn=epic_next_action
-                )
-            finally:
-                close_wezterm_pane(pane_id)
+            success = wait_for_sentinel(pane_id, AUTOFLOW_SENTINEL, poll_interval, timeout, startup_wait)
 
             if not success:
                 print(
-                    f"[ERROR] Timeout waiting for Claude to complete {step}. Stopping autoflow.",
+                    f"[ERROR] Timeout waiting for Claude ({step}). Stopping.",
                     file=sys.stderr,
                 )
+                close_wezterm_pane(pane_id)
                 sys.exit(1)
+
+            complete_step = _EPIC_PREPARE_TO_COMPLETE[step]
+            try:
+                run_named_epic_step(epic, complete_step)
+            except Exception as exc:
+                print(f"[ERROR] Complete step '{complete_step}' failed: {exc}", file=sys.stderr)
+                close_wezterm_pane(pane_id)
+                sys.exit(1)
+
+            close_wezterm_pane(pane_id)
         else:
             try:
                 run_named_epic_step(epic, step)
