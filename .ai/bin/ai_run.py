@@ -2529,9 +2529,12 @@ def get_autoflow_config() -> Dict:
     cfg = load_project_config()
     autoflow = cfg.get("autoflow", {})
     return {
-        "poll_interval": float(autoflow.get("poll_interval_seconds", 15)),
+        "poll_interval": float(autoflow.get("poll_interval_seconds", 1)),
         "timeout": float(autoflow.get("timeout_seconds", 1800)),
     }
+
+
+STABLE_THRESHOLD = 5  # consecutive polls at count=1 in State 1 before treating as completion
 
 
 def wait_for_sentinel(
@@ -2540,13 +2543,12 @@ def wait_for_sentinel(
     poll_interval: float,
     timeout: float,
 ) -> bool:
-    baseline_result = subprocess.run(
-        ["wezterm", "cli", "get-text", "--pane-id", pane_id],
-        capture_output=True,
-        text=True,
-    )
-    baseline_count = baseline_result.stdout.count(sentinel) if baseline_result.returncode == 0 else 0
-
+    # Two-phase state machine:
+    #   State 0 (INIT):       Haven't seen sentinel yet.
+    #   State 1 (FIRST_SEEN): Sentinel appeared once — likely the instruction text.
+    #   State 2 (GONE):       Sentinel count dropped to 0 — instruction scrolled off.
+    state = 0
+    stable_count = 0
     elapsed = 0.0
     while elapsed < timeout:
         result = subprocess.run(
@@ -2554,10 +2556,34 @@ def wait_for_sentinel(
             capture_output=True,
             text=True,
         )
-        if result.returncode == 0 and result.stdout.count(sentinel) > baseline_count:
+        if result.returncode != 0:
+            print(f"[WAIT] get-text error (returncode={result.returncode}), skipping poll... ({elapsed:.0f}s elapsed, state={state})")
+            time.sleep(poll_interval)
+            elapsed += poll_interval
+            continue
+
+        count = result.stdout.count(sentinel)
+
+        if state == 0 and count >= 1:
+            state = 1
+            stable_count = 1
+        elif state == 1:
+            if count >= 2:
+                print(f"[WAIT] Sentinel detected after {elapsed:.0f}s. Claude finished.")
+                return True
+            elif count == 1:
+                stable_count += 1
+                if stable_count >= STABLE_THRESHOLD:
+                    print(f"[WAIT] Stable sentinel count ({stable_count}) reached threshold after {elapsed:.0f}s. Claude finished.")
+                    return True
+            elif count == 0:
+                stable_count = 0
+                state = 2
+        elif state == 2 and count >= 1:
             print(f"[WAIT] Sentinel detected after {elapsed:.0f}s. Claude finished.")
             return True
-        print(f"[WAIT] Waiting for Claude to finish... ({elapsed:.0f}s elapsed)")
+
+        print(f"[WAIT] Waiting for Claude to finish... ({elapsed:.0f}s elapsed, state={state}, stable_count={stable_count})")
         time.sleep(poll_interval)
         elapsed += poll_interval
     return False
