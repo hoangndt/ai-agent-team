@@ -2428,7 +2428,7 @@ _PREPARE_STEP_PROMPT: Dict[str, object] = {
 
 def spawn_claude_wezterm(
     prompt_path: Path, cwd: str, wait_seconds: float = 1.0
-) -> None:
+) -> Optional[str]:
     result = subprocess.run(
         [
             "wezterm",
@@ -2445,7 +2445,7 @@ def spawn_claude_wezterm(
     )
     if result.returncode != 0:
         print(f"[WARN] wezterm spawn failed: {result.stderr.strip()}", file=sys.stderr)
-        return
+        return None
 
     pane_id = result.stdout.strip()
     if not pane_id:
@@ -2453,7 +2453,7 @@ def spawn_claude_wezterm(
             "[WARN] Could not get WezTerm pane ID, skipping auto-paste.",
             file=sys.stderr,
         )
-        return
+        return None
 
     print(
         f"[AUTO] Spawned Claude in WezTerm pane {pane_id}. Waiting {wait_seconds}s for it to load..."
@@ -2472,6 +2472,154 @@ def spawn_claude_wezterm(
         capture_output=True,
     )
     print(f"[AUTO] Prompt sent and Enter keystroke fired for pane {pane_id}. Claude is processing.")
+    return pane_id
+
+
+def close_wezterm_pane(pane_id: str) -> None:
+    result = subprocess.run(
+        ["wezterm", "cli", "kill-pane", "--pane-id", pane_id],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        print(
+            f"[WARN] Could not close WezTerm pane {pane_id}: {result.stderr.strip()}",
+            file=sys.stderr,
+        )
+    else:
+        print(f"[AUTO] Closed WezTerm pane {pane_id}.")
+
+
+def get_autoflow_config() -> Dict:
+    cfg = load_project_config()
+    autoflow = cfg.get("autoflow", {})
+    return {
+        "poll_interval": float(autoflow.get("poll_interval_seconds", 15)),
+        "timeout": float(autoflow.get("timeout_seconds", 1800)),
+    }
+
+
+def wait_for_step_advance(
+    run_id: str,
+    current_step: str,
+    poll_interval: float,
+    timeout: float,
+    action_fn,
+) -> bool:
+    elapsed = 0.0
+    while elapsed < timeout:
+        new_step = action_fn(run_id)
+        if new_step != current_step:
+            print(f"[WAIT] Step advanced: {current_step} -> {new_step} ({elapsed:.0f}s elapsed)")
+            return True
+        print(f"[WAIT] Polling for {current_step} completion... ({elapsed:.0f}s elapsed)")
+        time.sleep(poll_interval)
+        elapsed += poll_interval
+    return False
+
+
+def run_ticket_autoflow(ticket: str) -> None:
+    cfg = get_autoflow_config()
+    poll_interval = cfg["poll_interval"]
+    timeout = cfg["timeout"]
+
+    print(
+        f"[AUTOFLOW] Starting ticket autoflow for {ticket} "
+        f"(poll={poll_interval}s, timeout={timeout}s)"
+    )
+
+    while True:
+        step = next_action(ticket)
+        print(f"[AUTOFLOW] [{now()}] Next step: {step}")
+
+        if step == "done":
+            print("[DONE] Workflow complete.")
+            return
+
+        if step in _PREPARE_STEP_PROMPT:
+            try:
+                run_named_step(ticket, step)
+            except Exception as exc:
+                print(f"[ERROR] Prepare step '{step}' failed: {exc}", file=sys.stderr)
+                sys.exit(1)
+            prompt_path = _PREPARE_STEP_PROMPT[step](ticket)  # type: ignore[operator]
+            pane_id = spawn_claude_wezterm(prompt_path, str(Path.cwd()))
+
+            if pane_id is None:
+                print("[ERROR] WezTerm spawn failed. Stopping autoflow.", file=sys.stderr)
+                sys.exit(1)
+
+            try:
+                success = wait_for_step_advance(
+                    ticket, step, poll_interval, timeout, action_fn=next_action
+                )
+            finally:
+                close_wezterm_pane(pane_id)
+
+            if not success:
+                print(
+                    f"[ERROR] Timeout waiting for Claude to complete {step}. Stopping autoflow.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+        else:
+            try:
+                run_named_step(ticket, step)
+            except Exception as exc:
+                print(f"[ERROR] Step '{step}' failed: {exc}", file=sys.stderr)
+                sys.exit(1)
+
+
+def run_epic_autoflow(epic: str) -> None:
+    cfg = get_autoflow_config()
+    poll_interval = cfg["poll_interval"]
+    timeout = cfg["timeout"]
+
+    print(
+        f"[AUTOFLOW] Starting epic autoflow for {epic} "
+        f"(poll={poll_interval}s, timeout={timeout}s)"
+    )
+
+    while True:
+        step = epic_next_action(epic)
+        print(f"[AUTOFLOW] [{now()}] Next step: {step}")
+
+        if step == "done":
+            print("[DONE] Epic workflow complete.")
+            return
+
+        if step in _EPIC_PREPARE_STEP_PROMPT:
+            try:
+                run_named_epic_step(epic, step)
+            except Exception as exc:
+                print(f"[ERROR] Prepare step '{step}' failed: {exc}", file=sys.stderr)
+                sys.exit(1)
+            prompt_path = _EPIC_PREPARE_STEP_PROMPT[step](epic)  # type: ignore[operator]
+            pane_id = spawn_claude_wezterm(prompt_path, str(Path.cwd()))
+
+            if pane_id is None:
+                print("[ERROR] WezTerm spawn failed. Stopping autoflow.", file=sys.stderr)
+                sys.exit(1)
+
+            try:
+                success = wait_for_step_advance(
+                    epic, step, poll_interval, timeout, action_fn=epic_next_action
+                )
+            finally:
+                close_wezterm_pane(pane_id)
+
+            if not success:
+                print(
+                    f"[ERROR] Timeout waiting for Claude to complete {step}. Stopping autoflow.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+        else:
+            try:
+                run_named_epic_step(epic, step)
+            except Exception as exc:
+                print(f"[ERROR] Step '{step}' failed: {exc}", file=sys.stderr)
+                sys.exit(1)
 
 
 def next_step(ticket: str, execute: bool = False, run_auto: bool = False) -> None:
@@ -2649,6 +2797,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Automatically open Claude in a new WezTerm tab with the prompt pre-loaded.",
     )
+    p_ticket.add_argument(
+        "--auto-flow",
+        action="store_true",
+        help="Run the full ticket workflow automatically: spawn Claude, wait for completion, advance through all steps until done.",
+    )
     p_ticket.add_argument("--no-prompt", action="store_true", help="Skip confirmation prompts.")
     p_ticket.add_argument("--domain", default="", help="Domain override, e.g. backend or frontend.")
 
@@ -2665,6 +2818,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--auto",
         action="store_true",
         help="Automatically open Claude in a new WezTerm tab with the prompt pre-loaded.",
+    )
+    p_epic_shortcut.add_argument(
+        "--auto-flow",
+        action="store_true",
+        help="Run the full epic workflow automatically: spawn Claude, wait for completion, advance through all steps until done.",
     )
     p_epic_shortcut.add_argument("--no-prompt", action="store_true", help="Skip confirmation prompts.")
     p_epic_shortcut.add_argument(
@@ -2779,7 +2937,9 @@ def main() -> int:
         elif args.command == "epic-next":
             epic_next_step(args.epic, execute=args.run, run_auto=args.run_auto)
         elif args.command == "ticket":
-            if args.next:
+            if getattr(args, "auto_flow", False):
+                run_ticket_autoflow(args.ticket_id)
+            elif args.next:
                 next_step(args.ticket_id, execute=True, run_auto=args.auto)
             else:
                 maybe_init_and_run(
@@ -2794,7 +2954,9 @@ def main() -> int:
                     init_kwargs={"domain": args.domain},
                 )
         elif args.command == "epic":
-            if args.next:
+            if getattr(args, "auto_flow", False):
+                run_epic_autoflow(args.epic_id)
+            elif args.next:
                 epic_next_step(args.epic_id, execute=True, run_auto=args.auto)
             else:
                 maybe_init_and_run(

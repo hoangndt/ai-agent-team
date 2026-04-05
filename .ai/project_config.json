@@ -4,6 +4,10 @@
   "git": {
     "base_branch": "main"
   },
+  "autoflow": {
+    "poll_interval_seconds": 15,
+    "timeout_seconds": 1800
+  },
   "domains": {
     "workflow": {
       "paths": [
