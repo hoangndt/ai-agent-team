@@ -2534,9 +2534,6 @@ def get_autoflow_config() -> Dict:
     }
 
 
-STABLE_THRESHOLD = 5  # consecutive polls at count=1 in State 1 before treating as completion
-
-
 def wait_for_sentinel(
     pane_id: str,
     sentinel: str,
@@ -2548,7 +2545,6 @@ def wait_for_sentinel(
     #   State 1 (FIRST_SEEN): Sentinel appeared once — likely the instruction text.
     #   State 2 (GONE):       Sentinel count dropped to 0 — instruction scrolled off.
     state = 0
-    stable_count = 0
     elapsed = 0.0
     while elapsed < timeout:
         result = subprocess.run(
@@ -2566,24 +2562,16 @@ def wait_for_sentinel(
 
         if state == 0 and count >= 1:
             state = 1
-            stable_count = 1
         elif state == 1:
             if count >= 2:
                 print(f"[WAIT] Sentinel detected after {elapsed:.0f}s. Claude finished.")
                 return True
-            elif count == 1:
-                stable_count += 1
-                if stable_count >= STABLE_THRESHOLD:
-                    print(f"[WAIT] Stable sentinel count ({stable_count}) reached threshold after {elapsed:.0f}s. Claude finished.")
-                    return True
             elif count == 0:
-                stable_count = 0
                 state = 2
         elif state == 2 and count >= 1:
             print(f"[WAIT] Sentinel detected after {elapsed:.0f}s. Claude finished.")
             return True
 
-        print(f"[WAIT] Waiting for Claude to finish... ({elapsed:.0f}s elapsed, state={state}, stable_count={stable_count})")
         time.sleep(poll_interval)
         elapsed += poll_interval
     return False
