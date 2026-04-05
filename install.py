@@ -6,9 +6,12 @@ Copies the AI workflow engine files into a target project directory.
 
 Usage:
     python install.py --target /path/to/my-project [options]
+    python install.py --sync-all [--config projects.json] [options]
 
 Options:
-    --target <path>             Target project directory (required)
+    --target <path>             Target project directory (required unless --sync-all)
+    --sync-all                  Read config file and sync to all listed projects
+    --config <path>             Path to config file (default: ./projects.json next to install.py)
     --force-project-files       Overwrite project_config.json and CLAUDE.md if they exist
     --with-skills <profile>     Copy examples/<profile>/skills/ into target .ai/skills/
     --dry-run                   Simulate actions without making any changes
@@ -39,6 +42,12 @@ MANAGED_DIRS = [
 
 # Sentinel file to verify we are running from inside the source repo
 SOURCE_SENTINEL = Path(".ai/bin/ai_run.py")
+
+DEFAULT_CONFIG = "projects.json"
+
+
+class ConfigError(Exception):
+    """Raised when the projects config file is invalid or missing."""
 
 
 def should_exclude(path: Path) -> bool:
@@ -137,55 +146,52 @@ def confirm_proceed(planned_actions: list[str]) -> bool:
     return answer == "y"
 
 
-def run_install(args: argparse.Namespace) -> int:
+def load_project_list(config_path: Path) -> list[str]:
+    """
+    Load and validate the projects config file.
+    Raises ConfigError on any config error.
+    Returns list of project path strings (may be empty).
+    """
+    if not config_path.exists():
+        raise ConfigError(f"Config file not found: {config_path}")
+    try:
+        data = json.loads(config_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        raise ConfigError(f"Config file is not valid JSON: {config_path}: {e}")
+    if not isinstance(data, dict) or "projects" not in data:
+        raise ConfigError(f"Config file missing 'projects' key: {config_path}")
+    projects = data["projects"]
+    if not isinstance(projects, list):
+        raise ConfigError(f"'projects' must be a list in {config_path}")
+    for i, entry in enumerate(projects):
+        if not isinstance(entry, str):
+            raise ConfigError(
+                f"'projects[{i}]' must be a string, got {type(entry).__name__}: {entry!r}"
+            )
+    return projects
+
+
+def print_sync_summary(results: dict) -> None:
+    """Print a summary table of per-project sync results."""
+    print()
+    print("=" * 60)
+    print("Sync Summary")
+    print("=" * 60)
+    for path_str, entry in results.items():
+        status = entry["status"]
+        reason = entry["reason"]
+        note = f"  ({reason})" if reason else ""
+        print(f"  {status:<7} {path_str}{note}")
+
+
+def install_ai(target: Path, args: argparse.Namespace) -> int:
+    """
+    Install or upgrade .ai into an already-validated target directory.
+    Caller is responsible for: sentinel check, target existence/writability, with-skills validation.
+    Returns 0 on success, 1 on failure.
+    """
     source_root = Path(__file__).resolve().parent
-    target = Path(args.target).resolve()
     dry_run = args.dry_run
-
-    # AC-14: Verify we're running from inside the source repo
-    if not (source_root / SOURCE_SENTINEL).exists():
-        print(
-            f"ERROR: Source files not found. Run this script from the ai-agent-team repo root.",
-            file=sys.stderr,
-        )
-        return 1
-
-    # AC-10: Validate target path
-    if target.exists() and not target.is_dir():
-        print(f"ERROR: --target '{target}' exists but is not a directory.", file=sys.stderr)
-        return 1
-    if target.exists() and not os.access(target, os.W_OK):
-        print(f"ERROR: --target '{target}' is not writable.", file=sys.stderr)
-        return 1
-    if not target.exists():
-        parent = target.parent
-        if not parent.exists():
-            print(
-                f"ERROR: --target '{target}' cannot be created: parent directory '{parent}' does not exist.",
-                file=sys.stderr,
-            )
-            return 1
-        if not os.access(parent, os.W_OK):
-            print(
-                f"ERROR: --target '{target}' cannot be created: parent directory '{parent}' is not writable.",
-                file=sys.stderr,
-            )
-            return 1
-
-    # AC-11: Validate --with-skills profile
-    if args.with_skills:
-        profile_dir = source_root / "examples" / args.with_skills / "skills"
-        if not profile_dir.is_dir():
-            available = find_available_profiles(source_root)
-            print(
-                f"ERROR: Skills profile '{args.with_skills}' not found.",
-                file=sys.stderr,
-            )
-            if available:
-                print(f"Available profiles: {', '.join(available)}", file=sys.stderr)
-            else:
-                print("No profiles found under examples/.", file=sys.stderr)
-            return 1
 
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     project_name = target.name
@@ -373,6 +379,132 @@ def run_install(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_install(args: argparse.Namespace) -> int:
+    """Single-project install: validate source sentinel, resolve target, then call install_ai()."""
+    source_root = Path(__file__).resolve().parent
+    target = Path(args.target).resolve()
+
+    # AC-14: Verify we're running from inside the source repo
+    if not (source_root / SOURCE_SENTINEL).exists():
+        print(
+            f"ERROR: Source files not found. Run this script from the ai-agent-team repo root.",
+            file=sys.stderr,
+        )
+        return 1
+
+    # Validate target path
+    if target.exists() and not target.is_dir():
+        print(f"ERROR: --target '{target}' exists but is not a directory.", file=sys.stderr)
+        return 1
+    if target.exists() and not os.access(target, os.W_OK):
+        print(f"ERROR: --target '{target}' is not writable.", file=sys.stderr)
+        return 1
+    if not target.exists():
+        parent = target.parent
+        if not parent.exists():
+            print(
+                f"ERROR: --target '{target}' cannot be created: parent directory '{parent}' does not exist.",
+                file=sys.stderr,
+            )
+            return 1
+        if not os.access(parent, os.W_OK):
+            print(
+                f"ERROR: --target '{target}' cannot be created: parent directory '{parent}' is not writable.",
+                file=sys.stderr,
+            )
+            return 1
+
+    # Validate --with-skills profile
+    if args.with_skills:
+        profile_dir = source_root / "examples" / args.with_skills / "skills"
+        if not profile_dir.is_dir():
+            available = find_available_profiles(source_root)
+            print(
+                f"ERROR: Skills profile '{args.with_skills}' not found.",
+                file=sys.stderr,
+            )
+            if available:
+                print(f"Available profiles: {', '.join(available)}", file=sys.stderr)
+            else:
+                print("No profiles found under examples/.", file=sys.stderr)
+            return 1
+
+    return install_ai(target, args)
+
+
+def sync_all_projects(config_path: Path, args: argparse.Namespace) -> int:
+    """Orchestrate bulk sync to all projects listed in config_path."""
+    source_root = Path(__file__).resolve().parent
+
+    # AC-14: Verify source sentinel once before the loop
+    if not (source_root / SOURCE_SENTINEL).exists():
+        print(
+            f"ERROR: Source files not found. Run this script from the ai-agent-team repo root.",
+            file=sys.stderr,
+        )
+        return 1
+
+    # Validate --with-skills once before the loop
+    if args.with_skills:
+        profile_dir = source_root / "examples" / args.with_skills / "skills"
+        if not profile_dir.is_dir():
+            available = find_available_profiles(source_root)
+            print(f"ERROR: Skills profile '{args.with_skills}' not found.", file=sys.stderr)
+            if available:
+                print(f"Available profiles: {', '.join(available)}", file=sys.stderr)
+            else:
+                print("No profiles found under examples/.", file=sys.stderr)
+            return 1
+
+    # AC-15: Implicitly bypass per-project confirmation prompts.
+    # Use a local copy so the caller's namespace is not mutated.
+    local_args = argparse.Namespace(**vars(args))
+    local_args.yes = True
+
+    try:
+        projects = load_project_list(config_path)
+    except ConfigError as e:
+        print(f"ERROR: {e}", file=sys.stderr)
+        return 1
+
+    if not projects:
+        print("[WARNING] No projects listed in config. Nothing to do.")
+        return 0
+
+    results: dict[str, dict[str, str]] = {}
+
+    for path_str in projects:
+        target = Path(path_str).resolve()
+        print(f"\n{'='*60}")
+        print(f"Project: {target}")
+        print(f"{'='*60}")
+        if not target.exists():
+            print(f"[SKIP] Path does not exist: {target}")
+            results[path_str] = {"status": "SKIP", "reason": "path not found"}
+            continue
+        if not target.is_dir():
+            print(f"[SKIP] Not a directory: {target}")
+            results[path_str] = {"status": "SKIP", "reason": "not a directory"}
+            continue
+        if not os.access(target, os.W_OK):
+            print(f"[ERROR] Permission denied: {target}")
+            results[path_str] = {"status": "ERROR", "reason": "permission denied"}
+            continue
+        try:
+            rc = install_ai(target, local_args)
+            results[path_str] = {
+                "status": "OK" if rc == 0 else "ERROR",
+                "reason": "" if rc == 0 else "install failed",
+            }
+        except Exception as e:
+            print(f"[ERROR] Unexpected failure for {target}: {e}")
+            results[path_str] = {"status": "ERROR", "reason": str(e)}
+
+    print_sync_summary(results)
+    errors = sum(1 for v in results.values() if v["status"] == "ERROR")
+    return 1 if errors > 0 else 0
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Install or upgrade the AI workflow engine into a target project.",
@@ -380,9 +512,19 @@ def main() -> None:
     )
     parser.add_argument(
         "--target",
-        required=True,
         metavar="<path>",
-        help="Target project directory",
+        help="Target project directory (required unless --sync-all)",
+    )
+    parser.add_argument(
+        "--sync-all",
+        action="store_true",
+        help="Read config file and sync to all listed projects",
+    )
+    parser.add_argument(
+        "--config",
+        metavar="<path>",
+        default=None,
+        help=f"Path to config file for --sync-all (default: {DEFAULT_CONFIG} next to install.py)",
     )
     parser.add_argument(
         "--force-project-files",
@@ -411,7 +553,23 @@ def main() -> None:
     )
 
     args = parser.parse_args()
-    sys.exit(run_install(args))
+
+    # AC-9: --target and --sync-all are mutually exclusive
+    if args.target and args.sync_all:
+        print("ERROR: --target and --sync-all are mutually exclusive.", file=sys.stderr)
+        sys.exit(1)
+
+    if not args.target and not args.sync_all:
+        print("ERROR: one of --target or --sync-all is required.", file=sys.stderr)
+        parser.print_usage(sys.stderr)
+        sys.exit(1)
+
+    if args.sync_all:
+        source_root = Path(__file__).resolve().parent
+        config_path = Path(args.config) if args.config else source_root / DEFAULT_CONFIG
+        sys.exit(sync_all_projects(config_path, args))
+    else:
+        sys.exit(run_install(args))
 
 
 if __name__ == "__main__":
