@@ -1,6 +1,9 @@
 {
   "project_name": "agent-team-template",
   "default_domain": "workflow",
+  "engine": {
+    "default": "claude"
+  },
   "git": {
     "base_branch": "main"
   },
