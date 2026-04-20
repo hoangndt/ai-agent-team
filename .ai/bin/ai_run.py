@@ -29,6 +29,15 @@ FIGMA_URL_RE = re.compile(
     re.IGNORECASE,
 )
 
+ENGINE_REGISTRY: Dict[str, Dict] = {
+    "claude": {
+        "cmd": ["claude", "--dangerously-skip-permissions"],
+    },
+    "codex": {
+        "cmd": ["codex", "--dangerously-bypass-approvals-and-sandbox"],
+    },
+}
+
 KNOWN_SUBCOMMANDS = frozenset({
     "init", "next", "status",
     "architect-prepare", "architect-complete",
@@ -326,6 +335,17 @@ def load_project_config() -> Dict:
     if not path.exists():
         raise FileNotFoundError("Missing .ai/project_config.json")
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def resolve_engine(engine_flag: Optional[str]) -> str:
+    name = engine_flag or load_project_config().get("engine", {}).get("default", "claude")
+    if name not in ENGINE_REGISTRY:
+        print(
+            f"[ERROR] Unknown engine: {name!r}. Known engines: {list(ENGINE_REGISTRY)}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    return name
 
 
 def get_base_branch() -> str:
@@ -2255,13 +2275,13 @@ _EPIC_PREPARE_STEP_PROMPT: Dict[str, object] = {
 }
 
 
-def epic_next_step(epic: str, execute: bool = False, run_auto: bool = False) -> None:
+def epic_next_step(epic: str, execute: bool = False, run_auto: bool = False, engine: str = "claude") -> None:
     step = epic_next_action(epic)
     if run_auto or execute:
         run_named_epic_step(epic, step)
         if run_auto and step in _EPIC_PREPARE_STEP_PROMPT:
             prompt_path = _EPIC_PREPARE_STEP_PROMPT[step](epic)  # type: ignore[operator]
-            spawn_claude_wezterm(prompt_path, str(Path.cwd()))
+            spawn_ai_wezterm(prompt_path, str(Path.cwd()), engine=engine)
     else:
         print(step)
 
@@ -2456,23 +2476,17 @@ _EPIC_PREPARE_TO_COMPLETE: Dict[str, str] = {
 }
 
 
-def spawn_claude_wezterm(
+def spawn_ai_wezterm(
     prompt_path: Path,
     cwd: str,
     wait_seconds: float = 1.0,
     sentinel_instruction: Optional[str] = None,
+    engine: str = "claude",
 ) -> Optional[str]:
+    engine_cfg = ENGINE_REGISTRY[engine]
+    cmd = engine_cfg["cmd"]
     result = subprocess.run(
-        [
-            "wezterm",
-            "cli",
-            "spawn",
-            "--cwd",
-            cwd,
-            "--",
-            "claude",
-            "--dangerously-skip-permissions",
-        ],
+        ["wezterm", "cli", "spawn", "--cwd", cwd, "--"] + cmd,
         capture_output=True,
         text=True,
     )
@@ -2489,7 +2503,7 @@ def spawn_claude_wezterm(
         return None
 
     print(
-        f"[AUTO] Spawned Claude in WezTerm pane {pane_id}. Waiting {wait_seconds}s for it to load..."
+        f"[AUTO] Spawned {engine} in WezTerm pane {pane_id}. Waiting {wait_seconds}s for it to load..."
     )
     time.sleep(wait_seconds)
 
@@ -2506,7 +2520,7 @@ def spawn_claude_wezterm(
         ["osascript", "-e", 'tell application "System Events" to key code 36'],
         capture_output=True,
     )
-    print(f"[AUTO] Prompt sent and Enter keystroke fired for pane {pane_id}. Claude is processing.")
+    print(f"[AUTO] Prompt sent and Enter keystroke fired for pane {pane_id}. {engine} is processing.")
     return pane_id
 
 
@@ -2577,7 +2591,7 @@ def wait_for_sentinel(
     return False
 
 
-def run_ticket_autoflow(ticket: str) -> None:
+def run_ticket_autoflow(ticket: str, engine: str = "claude") -> None:
     cfg = get_autoflow_config()
     poll_interval = cfg["poll_interval"]
     timeout = cfg["timeout"]
@@ -2602,8 +2616,8 @@ def run_ticket_autoflow(ticket: str) -> None:
                 print(f"[ERROR] Prepare step '{step}' failed: {exc}", file=sys.stderr)
                 sys.exit(1)
             prompt_path = _PREPARE_STEP_PROMPT[step](ticket)  # type: ignore[operator]
-            pane_id = spawn_claude_wezterm(
-                prompt_path, str(Path.cwd()), sentinel_instruction=make_sentinel_instruction(ticket)
+            pane_id = spawn_ai_wezterm(
+                prompt_path, str(Path.cwd()), sentinel_instruction=make_sentinel_instruction(ticket), engine=engine
             )
 
             if pane_id is None:
@@ -2637,7 +2651,7 @@ def run_ticket_autoflow(ticket: str) -> None:
                 sys.exit(1)
 
 
-def run_epic_autoflow(epic: str) -> None:
+def run_epic_autoflow(epic: str, engine: str = "claude") -> None:
     cfg = get_autoflow_config()
     poll_interval = cfg["poll_interval"]
     timeout = cfg["timeout"]
@@ -2662,8 +2676,8 @@ def run_epic_autoflow(epic: str) -> None:
                 print(f"[ERROR] Prepare step '{step}' failed: {exc}", file=sys.stderr)
                 sys.exit(1)
             prompt_path = _EPIC_PREPARE_STEP_PROMPT[step](epic)  # type: ignore[operator]
-            pane_id = spawn_claude_wezterm(
-                prompt_path, str(Path.cwd()), sentinel_instruction=make_sentinel_instruction(epic)
+            pane_id = spawn_ai_wezterm(
+                prompt_path, str(Path.cwd()), sentinel_instruction=make_sentinel_instruction(epic), engine=engine
             )
 
             if pane_id is None:
@@ -2697,13 +2711,13 @@ def run_epic_autoflow(epic: str) -> None:
                 sys.exit(1)
 
 
-def next_step(ticket: str, execute: bool = False, run_auto: bool = False) -> None:
+def next_step(ticket: str, execute: bool = False, run_auto: bool = False, engine: str = "claude") -> None:
     step = next_action(ticket)
     if run_auto or execute:
         run_named_step(ticket, step)
         if run_auto and step in _PREPARE_STEP_PROMPT:
             prompt_path = _PREPARE_STEP_PROMPT[step](ticket)  # type: ignore[operator]
-            spawn_claude_wezterm(prompt_path, str(Path.cwd()))
+            spawn_ai_wezterm(prompt_path, str(Path.cwd()), engine=engine)
     else:
         print(step)
 
@@ -2722,6 +2736,7 @@ def maybe_init_and_run(
     init_fn,
     next_fn,
     init_kwargs: dict,
+    engine: str = "claude",
 ) -> None:
     if not run_dir.exists():
         if no_prompt and not inline_req:
@@ -2756,7 +2771,7 @@ def maybe_init_and_run(
         init_fn(id, requirement, **init_kwargs)
         print(f"[OK] Initialized {id}. Run 'next {id} --run' when ready.")
         return
-    next_fn(id, execute=True, run_auto=run_auto)
+    next_fn(id, execute=True, run_auto=run_auto, engine=engine)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -2805,6 +2820,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--run-auto",
         action="store_true",
         help="Execute the next step and automatically open Claude in a new WezTerm tab with the prompt pre-loaded.",
+    )
+    p_next.add_argument(
+        "--engine",
+        default=None,
+        help="AI engine to use for WezTerm spawning (e.g. claude, codex). Overrides engine.default in project_config.json.",
     )
 
     # ── Epic subcommands ──────────────────────────────────────────────────────
@@ -2856,6 +2876,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Execute the next epic step and automatically open Claude in a new WezTerm tab.",
     )
+    p_epic_next.add_argument(
+        "--engine",
+        default=None,
+        help="AI engine to use for WezTerm spawning (e.g. claude, codex). Overrides engine.default in project_config.json.",
+    )
 
     # ── Shortcut subcommands ──────────────────────────────────────────────────
     p_ticket = sub.add_parser("ticket", help="Run ticket workflow shortcuts.")
@@ -2879,6 +2904,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_ticket.add_argument("--no-prompt", action="store_true", help="Skip confirmation prompts.")
     p_ticket.add_argument("--domain", default="", help="Domain override, e.g. backend or frontend.")
+    p_ticket.add_argument(
+        "--engine",
+        default=None,
+        help="AI engine to use for WezTerm spawning (e.g. claude, codex). Overrides engine.default in project_config.json.",
+    )
 
     p_epic_shortcut = sub.add_parser("epic", help="Run epic workflow shortcuts.")
     p_epic_shortcut.add_argument("epic_id", help="Epic ID, e.g. EPIC-001")
@@ -2905,6 +2935,11 @@ def build_parser() -> argparse.ArgumentParser:
         default="",
         metavar="DOMAINS",
         help="Comma-separated domains, e.g. backend,frontend.",
+    )
+    p_epic_shortcut.add_argument(
+        "--engine",
+        default=None,
+        help="AI engine to use for WezTerm spawning (e.g. claude, codex). Overrides engine.default in project_config.json.",
     )
 
     return parser
@@ -2976,7 +3011,8 @@ def main() -> int:
         elif args.command == "status":
             show_status(args.ticket)
         elif args.command == "next":
-            next_step(args.ticket, execute=args.run, run_auto=args.run_auto)
+            engine = resolve_engine(args.engine)
+            next_step(args.ticket, execute=args.run, run_auto=args.run_auto, engine=engine)
         elif args.command == "epic-init":
             domains_arg = args.domains
             if not domains_arg and getattr(args, "domain", ""):
@@ -3010,12 +3046,14 @@ def main() -> int:
         elif args.command == "epic-status":
             show_epic_status(args.epic)
         elif args.command == "epic-next":
-            epic_next_step(args.epic, execute=args.run, run_auto=args.run_auto)
+            engine = resolve_engine(args.engine)
+            epic_next_step(args.epic, execute=args.run, run_auto=args.run_auto, engine=engine)
         elif args.command == "ticket":
+            engine = resolve_engine(args.engine)
             if getattr(args, "auto_flow", False):
-                run_ticket_autoflow(args.ticket_id)
+                run_ticket_autoflow(args.ticket_id, engine=engine)
             elif args.next:
-                next_step(args.ticket_id, execute=True, run_auto=args.auto)
+                next_step(args.ticket_id, execute=True, run_auto=args.auto, engine=engine)
             else:
                 maybe_init_and_run(
                     id=args.ticket_id,
@@ -3027,12 +3065,14 @@ def main() -> int:
                     init_fn=init_ticket,
                     next_fn=next_step,
                     init_kwargs={"domain": args.domain},
+                    engine=engine,
                 )
         elif args.command == "epic":
+            engine = resolve_engine(args.engine)
             if getattr(args, "auto_flow", False):
-                run_epic_autoflow(args.epic_id)
+                run_epic_autoflow(args.epic_id, engine=engine)
             elif args.next:
-                epic_next_step(args.epic_id, execute=True, run_auto=args.auto)
+                epic_next_step(args.epic_id, execute=True, run_auto=args.auto, engine=engine)
             else:
                 maybe_init_and_run(
                     id=args.epic_id,
@@ -3044,6 +3084,7 @@ def main() -> int:
                     init_fn=epic_init,
                     next_fn=epic_next_step,
                     init_kwargs={"domains": args.domains},
+                    engine=engine,
                 )
         else:
             parser.print_help()
