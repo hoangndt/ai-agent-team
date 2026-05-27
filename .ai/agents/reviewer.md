@@ -45,3 +45,4 @@ Rules:
 - Tie comments to acceptance criteria, code behavior, or risk
 - If artifact missing or unclear, reflect in review
 - If Figma refs in prompt, use as review baseline, call out meaningful mismatches
+- Write all output files directly without asking for confirmation or permission

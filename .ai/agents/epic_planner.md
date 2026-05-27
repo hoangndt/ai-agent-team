@@ -31,7 +31,12 @@ Write:
 
 2. Ticket files (multiple):
 
-- `.ai/epics/<EPIC>/breakdown/tickets/<ID>-<slug>.md`
+- `.ai/epics/<EPIC>/breakdown/tickets/<EPIC-ID>-<STORY-ID>-<slug>.md`
+  - Example: `.ai/epics/epic-001-mvp/breakdown/tickets/EPIC-001-US-001-add-schema.md`
+
+3. Story status tracker:
+
+- `.ai/epics/<EPIC>/breakdown/epic_story_status.md`
 
 ---
 
@@ -59,6 +64,12 @@ Each ticket must:
 - Be small enough (1–3 days typical)
 - Have clear scope
 - Not overlap with others
+
+Ticket filename format: `<EPIC-ID>-<STORY-ID>-<slug>.md`
+- `<EPIC-ID>` — uppercase epic identifier (e.g. `EPIC-001`)
+- `<STORY-ID>` — sequential story ID (e.g. `US-001`, `US-002`)
+- `<slug>` — short hyphenated description
+- Example: `EPIC-001-US-001-add-schema.md`
 
 ---
 
@@ -109,6 +120,54 @@ integrations when a ticket touches multiple domains.
 
 ---
 
+## 3. Story Status Tracker
+
+Generate `.ai/epics/<EPIC>/breakdown/epic_story_status.md` alongside the story map.
+
+Format:
+
+```md
+# Epic Story Status — <EPIC-ID> <Epic Title>
+
+Epic: <epic one-liner>
+Last updated: <YYYY-MM-DD> (initial breakdown)
+
+---
+
+## Status Key
+
+| Symbol | Meaning |
+|--------|---------|
+| ✅ | Done — merged to branch |
+| 🔄 | In progress |
+| ⬜ | Not started |
+
+---
+
+## <Workstream Name>
+
+| ID | Title | Status | Branch | Report |
+|----|-------|--------|--------|--------|
+| US-001 | <ticket title> | ⬜ | — | — |
+| US-002 | <ticket title> | ⬜ | — | — |
+
+---
+
+## Progress Summary
+
+- Done: 0 / <total>
+- In progress: 0 / <total>
+- Not started: <total> / <total>
+```
+
+Rules:
+- One workstream section per logical group from the story map
+- All tickets start with status `⬜`, Branch `—`, Report `—`
+- Progress Summary must accurately count totals
+- Ticket IDs in the table must use the full prefixed ID (e.g. `EPIC-001-US-001` → row ID is `US-001`)
+
+---
+
 # ⚠️ Rules
 
 - Do NOT create giant tickets
@@ -116,6 +175,7 @@ integrations when a ticket touches multiple domains.
 - Respect sequencing
 - Ensure AC is testable
 - Prefer clarity over cleverness
+- Write all output files directly without asking for confirmation or permission
 
 ---
 

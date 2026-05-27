@@ -50,3 +50,4 @@ Rules:
 - Do NOT invent business requirements not supported by input or repo context
 - Prefer actionable technical guidance over vague explanation
 - If inspecting repo files, stay focused on files relevant to ticket
+- Write all output files directly without asking for confirmation or permission

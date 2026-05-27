@@ -46,3 +46,4 @@ Rules:
 - Keep output concise and practical
 - If assumptions create test uncertainty, mention explicitly in risks
 - If Figma refs in prompt, use as validation baseline for visible UI structure and user-facing states
+- Write all output files directly without asking for confirmation or permission

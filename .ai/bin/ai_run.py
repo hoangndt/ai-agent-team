@@ -274,6 +274,10 @@ def epic_tickets_dir(epic: str) -> Path:
     return epic_breakdown_dir(epic) / "tickets"
 
 
+def epic_story_status_path(epic: str) -> Path:
+    return epic_breakdown_dir(epic) / "epic_story_status.md"
+
+
 def read(path: Path) -> str:
     if not path.exists():
         return ""
@@ -1255,6 +1259,31 @@ def architect_fix_complete(ticket: str) -> None:
     print(f"[OK] Architect fix verified for {ticket}")
 
 
+def _epic_story_status_block(ticket: str) -> str:
+    """Return epic story status update instructions if ticket matches EPIC-NNN-STORY-NNN pattern."""
+    match = re.match(r"^(EPIC-\d+)-([A-Z]+-\d+)-", ticket, re.IGNORECASE)
+    if not match:
+        return ""
+    epic_prefix = match.group(1).upper()
+    story_id = match.group(2).upper()
+    report_link = f".ai/runs/{ticket}/dev/implementation_report.md"
+    return f"""
+## Epic story status update
+
+Ticket `{ticket}` belongs to epic `{epic_prefix}`, story `{story_id}`.
+
+After committing:
+1. Find the epic folder: look in `.ai/epics/` for a directory whose name starts with `{epic_prefix.lower()}` (e.g. `{epic_prefix.lower()}-mvp`).
+2. Open `.ai/epics/<epic-folder>/breakdown/epic_story_status.md`.
+3. Find the table row for `{story_id}` and update:
+   - Status column: `🔄`
+   - Branch column: `` `{ticket}` ``
+   - Report column: `[report]({report_link})`
+4. Update the "Last updated" header line (e.g. `Last updated: YYYY-MM-DD ({story_id} in progress)`).
+5. Recalculate the Progress Summary counts at the bottom.
+"""
+
+
 def dev_prepare(ticket: str) -> None:
     update_stage(ticket, "dev_prepare")
     set_runner(ticket, "dev-prepare")
@@ -1290,10 +1319,18 @@ The report must include:
 4. Assumptions followed
 5. Commands/tests you ran
 
+## Git commit (required after writing the report)
+
+1. Run `git branch --show-current` to check the current branch.
+2. If on `{base_branch}`: create a new branch: `git checkout -b {ticket.lower()}`
+3. Stage all changes: `git add -A`
+4. Commit: `git commit -m "feat({ticket}): <one-line summary>"`
+{_epic_story_status_block(ticket)}
 Important:
 - Make the code changes directly in the repo.
 - Write the report directly to the file above.
 - Keep the report concise and factual.
+- Always commit after writing the report.
 """
     prompt = build_role_prompt(ticket, "developer", task_instruction)
     write(dev_prompt_path(ticket), prompt)
@@ -1434,11 +1471,19 @@ Steps:
    - Review Issues Addressed (reference each issue explicitly)
    - QA Issues Addressed (reference each issue explicitly)
 
+## Git commit (required after appending the fix-round section)
+
+1. Run `git branch --show-current` to confirm you are on the ticket branch (not `{base_branch}`).
+2. If somehow on `{base_branch}`: create the branch first: `git checkout -b {ticket.lower()}`
+3. Stage all changes: `git add -A`
+4. Commit: `git commit -m "fix({ticket}): <one-line summary of fix round>"`
+{_epic_story_status_block(ticket)}
 Important:
 - Preserve all existing content in implementation_report.md — only append.
 - Make the code changes directly in the repo.
 - Be explicit about how each critical issue was fixed.
 - If QA identified missing tests, add them when feasible and report them clearly.
+- Always commit after appending the fix-round section.
 """
     prompt = build_role_prompt(ticket, "developer", task_instruction)
     write(dev_fix_prompt_path(ticket), prompt)
@@ -1996,7 +2041,11 @@ Write the story map directly to:
 - {epic_story_map_path(epic).as_posix()}
 
 Write individual ticket files directly to:
-- {tickets_dir.as_posix()}/<US-NNN-short-slug>.md
+- {tickets_dir.as_posix()}/<EPIC-ID>-<STORY-ID>-<short-slug>.md
+  Example: {tickets_dir.as_posix()}/EPIC-001-US-001-add-schema.md
+
+Write the story status tracker directly to:
+- {epic_story_status_path(epic).as_posix()}
 
 ## Story Map Requirements
 
@@ -2007,7 +2056,7 @@ Write individual ticket files directly to:
 
 ## Ticket File Requirements
 
-- Filename format: US-NNN-<slug>.md (e.g. US-001-add-cli-commands.md)
+- Filename format: `<EPIC-ID>-<STORY-ID>-<slug>.md` (e.g. `EPIC-001-US-001-add-cli-commands.md`)
 - Each ticket file MUST contain all of the following sections using exact `##` level headers:
 
   ```
@@ -2037,9 +2086,52 @@ Before writing output, apply the self-review checklist:
 - No ticket title is a vague action phrase (e.g. "Improve X", "Refactor Y")
 - Do NOT produce god tickets (covering multiple features) or layer-split tickets without independent user value
 
+## Story Status Tracker Requirements
+
+The `epic_story_status.md` file must follow this format exactly:
+
+```
+# Epic Story Status — <EPIC-ID> <Epic Title>
+
+Epic: <one-liner>
+Last updated: <YYYY-MM-DD> (initial breakdown)
+
+---
+
+## Status Key
+
+| Symbol | Meaning |
+|--------|---------|
+| ✅ | Done — merged to branch |
+| 🔄 | In progress |
+| ⬜ | Not started |
+
+---
+
+## <Workstream Name>
+
+| ID | Title | Status | Branch | Report |
+|----|-------|--------|--------|--------|
+| US-001 | <title> | ⬜ | — | — |
+
+---
+
+## Progress Summary
+
+- Done: 0 / <total>
+- In progress: 0 / <total>
+- Not started: <total> / <total>
+```
+
+Rules:
+- One section per workstream, matching the story map groupings
+- All tickets start with status `⬜`, Branch `—`, Report `—`
+- Progress Summary totals must be accurate
+- Story IDs in the table match the ticket file prefixes (e.g. `US-001`)
+
 ## Important
 
-- Write the story map and all ticket files directly.
+- Write the story map, all ticket files, and the story status tracker directly.
 - Do not reply in chat with the final content.
 - Create at least one ticket file in {tickets_dir.as_posix()}.
 """
@@ -2057,7 +2149,11 @@ def epic_breakdown_complete(epic: str) -> None:
     update_epic_stage(epic, "epic_breakdown_complete")
     set_epic_runner(epic, "epic-breakdown-complete")
 
-    ensure_non_empty_epic_files([epic_story_map_path(epic)], "epic_breakdown_complete", epic)
+    ensure_non_empty_epic_files(
+        [epic_story_map_path(epic), epic_story_status_path(epic)],
+        "epic_breakdown_complete",
+        epic,
+    )
 
     ticket_files = list(epic_tickets_dir(epic).glob("*.md"))
     if not ticket_files:
@@ -2070,6 +2166,18 @@ def epic_breakdown_complete(epic: str) -> None:
             f"No ticket files found in {epic_tickets_dir(epic).as_posix()}. "
             "The epic_planner must write at least one *.md file there."
         )
+
+    # Validate ticket filenames follow <EPIC-ID>-<STORY-ID>-<slug>.md format
+    ticket_name_re = re.compile(r"^EPIC-\d+-[A-Z]+-\d+-.+\.md$", re.IGNORECASE)
+    bad_names = [tf.name for tf in ticket_files if not ticket_name_re.match(tf.name)]
+    if bad_names:
+        msg = (
+            "Ticket file(s) do not follow the required naming format "
+            "`<EPIC-ID>-<STORY-ID>-<slug>.md` (e.g. EPIC-001-US-001-add-schema.md):\n"
+            + "\n".join(f"  {n}" for n in bad_names)
+        )
+        fail_epic_stage(epic, "epic_breakdown_complete", msg)
+        raise ValueError(msg)
 
     # AC-7: verify each ticket file has a non-empty ## Domain section
     initialized_domains = set(get_epic_domains(epic))
@@ -2133,6 +2241,7 @@ def epic_breakdown_complete(epic: str) -> None:
         raise ValueError(msg)
 
     set_epic_artifact(epic, "epic_story_map", epic_story_map_path(epic))
+    set_epic_artifact(epic, "epic_story_status", epic_story_status_path(epic))
     set_epic_artifact(epic, "epic_tickets_dir", epic_tickets_dir(epic))
 
     complete_epic_stage(

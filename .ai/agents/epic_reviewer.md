@@ -47,6 +47,7 @@ epic_review.json
 - Prefer actionable feedback
 - Do NOT discuss implementation details
 - Follow-up reviews: verify fixes, do NOT repeat already fixed issues
+- Write all output files directly without asking for confirmation or permission
 
 ## ✅ Decision guidance
 

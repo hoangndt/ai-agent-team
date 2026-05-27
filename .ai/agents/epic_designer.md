@@ -75,6 +75,7 @@ Write to:
 - Do NOT over-engineer
 - Prefer existing architecture over inventing new patterns
 - Keep it implementable
+- Write all output files directly without asking for confirmation or permission
 
 ---
 

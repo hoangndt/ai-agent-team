@@ -84,6 +84,7 @@ If multiple domains listed in project context, identify:
 - Do NOT invent requirements beyond reasonable inference
 - Be explicit about uncertainty
 - Keep it structured and concise
+- Write all output files directly without asking for confirmation or permission
 
 ---
 

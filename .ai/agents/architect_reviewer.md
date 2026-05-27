@@ -46,3 +46,4 @@ Rules:
 - If artifact missing or unclear, reflect in review
 - Do not comment on code style or implementation details — this is design review, not code review
 - Do not invent requirements not present in input
+- Write all output files directly without asking for confirmation or permission
