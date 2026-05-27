@@ -51,3 +51,18 @@ Rules:
 - Prefer actionable technical guidance over vague explanation
 - If inspecting repo files, stay focused on files relevant to ticket
 - Write all output files directly without asking for confirmation or permission
+
+Final step — after all 4 files are written:
+
+Review everything you wrote and answer this question in chat:
+
+**"Are there any assumptions, unknowns, or blockers that need to be addressed before development can start?"**
+
+For each point identified:
+1. State the assumption/unknown/blocker clearly
+2. Propose a concrete resolution or recommendation (best guess, suggested default, or decision needed from user)
+3. Flag whether it is a **blocker** (must resolve before dev) or **non-blocker** (can proceed with stated assumption)
+
+Then ask the user to confirm or correct each point before the architect phase is considered done.
+
+Goal: ensure the architect output is clear and actionable for the Developer — no ambiguity left unaddressed.

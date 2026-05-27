@@ -1276,10 +1276,10 @@ After committing:
 1. Find the epic folder: look in `.ai/epics/` for a directory whose name starts with `{epic_prefix.lower()}` (e.g. `{epic_prefix.lower()}-mvp`).
 2. Open `.ai/epics/<epic-folder>/breakdown/epic_story_status.md`.
 3. Find the table row for `{story_id}` and update:
-   - Status column: `🔄`
+   - Status column: `✅`
    - Branch column: `` `{ticket}` ``
    - Report column: `[report]({report_link})`
-4. Update the "Last updated" header line (e.g. `Last updated: YYYY-MM-DD ({story_id} in progress)`).
+4. Update the "Last updated" header line (e.g. `Last updated: YYYY-MM-DD ({story_id} done)`).
 5. Recalculate the Progress Summary counts at the bottom.
 """
 
