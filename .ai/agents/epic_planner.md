@@ -116,6 +116,12 @@ integrations when a ticket touches multiple domains.
 ## Notes
 
 ...
+
+## References
+
+- [Epic Analysis](.ai/epics/<EPIC-FOLDER>/analysis/epic_analysis.md)
+- [Epic Design](.ai/epics/<EPIC-FOLDER>/design/epic_design.md)
+- [Epic Story Status](.ai/epics/<EPIC-FOLDER>/breakdown/epic_story_status.md)
 ```
 
 ---

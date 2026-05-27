@@ -2069,12 +2069,19 @@ Write the story status tracker directly to:
   ## Suggested Order
   ## Domain
   ## Notes
+  ## References
   ```
 
 - `## Goal` — must be non-empty; state what this ticket achieves
 - `## Scope` — must be non-empty; list exactly what is included
 - `## Acceptance Criteria` — must contain at least two concrete, testable criteria (not placeholders like "works correctly")
 - `## Domain` — must be set to one of the configured project domains
+- `## References` — must contain links to the epic analysis, design, and story status files:
+  ```
+  - [Epic Analysis]({epic_analysis_path(epic).as_posix()})
+  - [Epic Design]({epic_design_path(epic).as_posix()})
+  - [Epic Story Status]({epic_story_status_path(epic).as_posix()})
+  ```
 
 ## Quality Requirements
 
@@ -2228,7 +2235,7 @@ def epic_breakdown_complete(epic: str) -> None:
         return False
 
     section_errors = []
-    required_sections = ["## Goal", "## Scope", "## Acceptance Criteria"]
+    required_sections = ["## Goal", "## Scope", "## Acceptance Criteria", "## References"]
     for tf in ticket_files:
         lines = tf.read_text(encoding="utf-8").splitlines()
         for section in required_sections:
