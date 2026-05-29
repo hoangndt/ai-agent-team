@@ -31,7 +31,7 @@ FIGMA_URL_RE = re.compile(
 
 ENGINE_REGISTRY: Dict[str, Dict] = {
     "claude": {
-        "cmd": ["claude", "--dangerously-skip-permissions"],
+        "cmd": ["claude", " --model claude-opus-4-8 --dangerously-skip-permissions"],
     },
     "codex": {
         "cmd": ["codex", "--dangerously-bypass-approvals-and-sandbox"],
