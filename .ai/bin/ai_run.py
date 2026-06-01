@@ -2601,8 +2601,10 @@ def spawn_ai_wezterm(
 ) -> Optional[str]:
     engine_cfg = ENGINE_REGISTRY[engine]
     cmd = engine_cfg["cmd"]
+
+    # Step 1: open a new WezTerm tab (bare shell, no engine command yet).
     result = subprocess.run(
-        ["wezterm", "cli", "spawn", "--cwd", cwd, "--"] + cmd,
+        ["wezterm", "cli", "spawn", "--cwd", cwd],
         capture_output=True,
         text=True,
     )
@@ -2618,11 +2620,24 @@ def spawn_ai_wezterm(
         )
         return None
 
-    print(
-        f"[AUTO] Spawned {engine} in WezTerm pane {pane_id}. Waiting {wait_seconds}s for it to load..."
-    )
-    time.sleep(wait_seconds)
+    print(f"[AUTO] Spawned WezTerm pane {pane_id}. Waiting 2s for shell to load...")
+    time.sleep(2.0)
 
+    # Step 2: launch the engine command, then hit Enter.
+    cmd_text = " ".join(cmd)
+    subprocess.run(
+        ["wezterm", "cli", "send-text", "--pane-id", pane_id, "--no-paste"],
+        input=cmd_text,
+        text=True,
+    )
+    subprocess.run(
+        ["osascript", "-e", 'tell application "System Events" to key code 36'],
+        capture_output=True,
+    )
+    print(f"[AUTO] Launched {engine} in pane {pane_id}. Waiting 1s before sending prompt...")
+    time.sleep(1.0)
+
+    # Step 3: send the prompt text.
     prompt_text = prompt_path.read_text(encoding="utf-8").rstrip("\n")
     if sentinel_instruction:
         prompt_text = prompt_text + "\n\n" + sentinel_instruction

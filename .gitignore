@@ -4,3 +4,4 @@ examples/.DS_Store
 projects.json
 __pycache__
 .gitnexus
+.ai/bin/__pycache__
