@@ -7,7 +7,7 @@ import sys
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 BASE = Path(".ai")
 RUNS = BASE / "runs"
@@ -31,11 +31,37 @@ FIGMA_URL_RE = re.compile(
 
 ENGINE_REGISTRY: Dict[str, Dict] = {
     "claude": {
-        "cmd": ["claude", " --model claude-opus-4-8 --dangerously-skip-permissions"],
+        "base": ["claude", "--dangerously-skip-permissions"],
+        "supports_model_effort": True,
     },
     "codex": {
-        "cmd": ["codex", "--dangerously-bypass-approvals-and-sandbox"],
+        "base": ["codex", "--dangerously-bypass-approvals-and-sandbox"],
+        "supports_model_effort": False,
     },
+}
+
+# Per-step model + effort. Opus is reserved for deep, open-ended design
+# reasoning (Architect, Epic Analyst, Epic Designer — including their fix
+# rounds, which are the same role re-doing design work). Every other step
+# runs on Sonnet to save tokens; effort is tuned per cognitive load.
+# Steps not listed fall back to _DEFAULT_STEP_MODEL.
+_DEFAULT_STEP_MODEL = ("sonnet", "high")
+STEP_MODEL: Dict[str, Tuple[str, str]] = {
+    # --- Opus, high effort (design brains) ---
+    "architect-prepare":        ("opus", "high"),
+    "architect-fix-prepare":    ("sonnet", "high"),
+    "epic-analysis-prepare":    ("opus", "high"),
+    "epic-design-prepare":      ("opus", "high"),
+    "epic-design-fix-prepare":  ("sonnet", "high"),
+    # --- Sonnet, high effort (critical / code) ---
+    "architect-review-prepare": ("sonnet", "high"),
+    "dev-prepare":              ("sonnet", "high"),
+    "review-prepare":           ("sonnet", "high"),
+    # --- Sonnet, medium effort (targeted / structured) ---
+    "dev-fix-prepare":          ("sonnet", "medium"),
+    "qa-prepare":               ("sonnet", "medium"),
+    "epic-review-prepare":      ("sonnet", "medium"),
+    "epic-breakdown-prepare":   ("sonnet", "medium"),
 }
 
 KNOWN_SUBCOMMANDS = frozenset({
@@ -2397,7 +2423,7 @@ def epic_next_step(epic: str, execute: bool = False, run_auto: bool = False, eng
         run_named_epic_step(epic, step)
         if run_auto and step in _EPIC_PREPARE_STEP_PROMPT:
             prompt_path = _EPIC_PREPARE_STEP_PROMPT[step](epic)  # type: ignore[operator]
-            spawn_ai_wezterm(prompt_path, str(Path.cwd()), engine=engine)
+            spawn_ai_wezterm(prompt_path, str(Path.cwd()), engine=engine, step=step)
     else:
         print(step)
 
@@ -2598,9 +2624,14 @@ def spawn_ai_wezterm(
     wait_seconds: float = 1.0,
     sentinel_instruction: Optional[str] = None,
     engine: str = "claude",
+    step: Optional[str] = None,
 ) -> Optional[str]:
     engine_cfg = ENGINE_REGISTRY[engine]
-    cmd = engine_cfg["cmd"]
+    cmd = list(engine_cfg["base"])
+    if engine_cfg.get("supports_model_effort") and step:
+        model, effort = STEP_MODEL.get(step, _DEFAULT_STEP_MODEL)
+        cmd += ["--model", model, "--effort", effort]
+        print(f"[AUTO] Step '{step}' -> model={model}, effort={effort}")
 
     # Step 1: open a new WezTerm tab (bare shell, no engine command yet).
     result = subprocess.run(
@@ -2748,7 +2779,7 @@ def run_ticket_autoflow(ticket: str, engine: str = "claude") -> None:
                 sys.exit(1)
             prompt_path = _PREPARE_STEP_PROMPT[step](ticket)  # type: ignore[operator]
             pane_id = spawn_ai_wezterm(
-                prompt_path, str(Path.cwd()), sentinel_instruction=make_sentinel_instruction(ticket), engine=engine
+                prompt_path, str(Path.cwd()), sentinel_instruction=make_sentinel_instruction(ticket), engine=engine, step=step
             )
 
             if pane_id is None:
@@ -2808,7 +2839,7 @@ def run_epic_autoflow(epic: str, engine: str = "claude") -> None:
                 sys.exit(1)
             prompt_path = _EPIC_PREPARE_STEP_PROMPT[step](epic)  # type: ignore[operator]
             pane_id = spawn_ai_wezterm(
-                prompt_path, str(Path.cwd()), sentinel_instruction=make_sentinel_instruction(epic), engine=engine
+                prompt_path, str(Path.cwd()), sentinel_instruction=make_sentinel_instruction(epic), engine=engine, step=step
             )
 
             if pane_id is None:
@@ -2848,7 +2879,7 @@ def next_step(ticket: str, execute: bool = False, run_auto: bool = False, engine
         run_named_step(ticket, step)
         if run_auto and step in _PREPARE_STEP_PROMPT:
             prompt_path = _PREPARE_STEP_PROMPT[step](ticket)  # type: ignore[operator]
-            spawn_ai_wezterm(prompt_path, str(Path.cwd()), engine=engine)
+            spawn_ai_wezterm(prompt_path, str(Path.cwd()), engine=engine, step=step)
     else:
         print(step)
 
