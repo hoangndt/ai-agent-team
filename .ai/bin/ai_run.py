@@ -61,7 +61,7 @@ STEP_MODEL: Dict[str, Tuple[str, str]] = {
     "dev-fix-prepare":          ("sonnet", "medium"),
     "qa-prepare":               ("sonnet", "medium"),
     "epic-review-prepare":      ("sonnet", "medium"),
-    "epic-breakdown-prepare":   ("sonnet", "medium"),
+    "epic-breakdown-prepare":   ("opus", "medium"),
 }
 
 KNOWN_SUBCOMMANDS = frozenset({
