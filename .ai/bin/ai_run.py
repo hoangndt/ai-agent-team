@@ -1349,7 +1349,7 @@ The report must include:
 
 1. Run `git branch --show-current` to check the current branch.
 2. If on `{base_branch}`: create a new branch: `git checkout -b {ticket.lower()}`
-3. Stage all changes: `git add -A`
+3. Stage all changes except for files inside `.ai` folder
 4. Commit: `git commit -m "feat({ticket}): <one-line summary>"`
 {_epic_story_status_block(ticket)}
 Important:

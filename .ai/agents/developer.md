@@ -40,6 +40,7 @@ Post-implementation steps (always run after writing report):
 3. Stage all changes: `git add -A`
 4. Commit: `git commit -m "feat(<ticket>): <one-line summary>"`
    - For fix rounds use: `git commit -m "fix(<ticket>): <one-line summary of fix>"`
+   - **Important**: don't commit any files inside `.ai` folder
 
 ## 2. Epic story status update
 
