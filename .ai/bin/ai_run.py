@@ -1501,7 +1501,7 @@ Steps:
 
 1. Run `git branch --show-current` to confirm you are on the ticket branch (not `{base_branch}`).
 2. If somehow on `{base_branch}`: create the branch first: `git checkout -b {ticket.lower()}`
-3. Stage all changes: `git add -A`
+3. Stage all changes except for files inside `.ai` folder
 4. Commit: `git commit -m "fix({ticket}): <one-line summary of fix round>"`
 {_epic_story_status_block(ticket)}
 Important:
