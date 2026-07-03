@@ -1947,6 +1947,13 @@ Read `.ai/project_config.json`.
 
 def arch_init_complete() -> None:
     ticket = ARCH_INIT_TICKET
+    if not status_file(ticket).exists():
+        msg = (
+            "No arch-init run found (missing .ai/runs/_arch-init/status.json). "
+            "Run arch-init-prepare first."
+        )
+        print(f"[ERROR] {msg}", file=sys.stderr)
+        raise FileNotFoundError(msg)
     update_stage(ticket, "arch_init_complete")
     set_runner(ticket, "arch-init-complete")
 

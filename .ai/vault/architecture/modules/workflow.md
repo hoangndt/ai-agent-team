@@ -74,6 +74,8 @@ prepare/act/complete + status.json machinery via a fixed sentinel ticket id (`_a
   `project_config.json` are missing — every ticket-scoped helper assumes `init`/`epic-init` (or,
   for `arch-init`, `ensure_arch_init_status()`) has already run.
 - The runner never auto-commits; every `git commit` happens only from within an agent's task
-  instructions (Developer, arch-init), never from Python.
+  instructions (Developer, dev-fix), never from Python. `arch-init` is explicitly forbidden from
+  running `git add`/`git commit`/`git push` (per AC-7) — all its edits land as working-tree
+  changes only.
 - `*-complete` functions must never trigger a WezTerm spawn — only `*-prepare` steps do, and only
   when `--run-auto` is passed.
