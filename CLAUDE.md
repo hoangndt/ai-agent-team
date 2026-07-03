@@ -113,6 +113,9 @@ Use `python .ai/bin/ai_run.py next <TICKET> --run-auto` to auto-advance **and** 
 | QA Prepare         | `qa-prepare <TICKET>`           | (generates prompt)                                             |
 | **QA**             | _(paste prompt)_                | Write qa_report.json                                           |
 | QA Complete        | `qa-complete <TICKET>`          | (verifies + builds qa fix context)                             |
+| Distill Prepare    | `distill-prepare <TICKET>`      | (auto-triggered on QA pass; generates prompt)                  |
+| **Distiller**      | _(paste prompt)_                | Refresh system-overview.md + modules/&lt;domain&gt;.md          |
+| Distill Complete   | `distill-complete <TICKET>`     | (verifies vault line caps; bounded retry, see Fix Loop)         |
 
 ---
 
