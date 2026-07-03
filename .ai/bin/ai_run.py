@@ -596,6 +596,33 @@ def ensure_non_empty_files(paths: List[Path], stage: str, ticket: str) -> None:
         raise FileNotFoundError(f"Missing or empty files: {', '.join(missing)}")
 
 
+def ensure_section_present(path: Path, heading: str, stage: str, ticket: str) -> None:
+    body = read(path) if path.exists() else ""
+    lines = body.splitlines()
+    heading_re = re.compile(r"^" + re.escape(heading) + r"\s*$")
+    next_heading_re = re.compile(r"^#{1,2}\s")
+
+    start = None
+    for i, line in enumerate(lines):
+        if heading_re.match(line):
+            start = i + 1
+            break
+
+    content_found = False
+    if start is not None:
+        for line in lines[start:]:
+            if next_heading_re.match(line):
+                break
+            if line.strip():
+                content_found = True
+                break
+
+    if not content_found:
+        msg = f"Missing or empty section '{heading}' in {path.name}"
+        fail_stage(ticket, stage, msg)
+        raise ValueError(msg)
+
+
 def get_ticket_domain(ticket: str) -> str:
     s = load_status(ticket)
     if s.get("domain"):
@@ -1633,6 +1660,12 @@ def dev_complete(ticket: str) -> None:
     set_runner(ticket, "dev-complete")
 
     ensure_non_empty_files([implementation_report_path(ticket)], "dev_complete", ticket)
+    ensure_section_present(
+        implementation_report_path(ticket),
+        "## Architecture Impact",
+        "dev_complete",
+        ticket,
+    )
     set_artifact(ticket, "implementation_report", implementation_report_path(ticket))
 
     complete_stage(ticket, "dev_complete", "Implementation report verified.")
@@ -1645,6 +1678,12 @@ def dev_fix_complete(ticket: str) -> None:
 
     ensure_non_empty_files(
         [implementation_report_path(ticket)], "dev_fix_complete", ticket
+    )
+    ensure_section_present(
+        implementation_report_path(ticket),
+        "## Architecture Impact",
+        "dev_fix_complete",
+        ticket,
     )
     set_artifact(ticket, "implementation_report", implementation_report_path(ticket))
 
