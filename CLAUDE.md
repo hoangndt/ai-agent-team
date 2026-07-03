@@ -6,6 +6,12 @@ You (Claude) are invoked at specific stages of a ticket workflow. Each stage gen
 
 ---
 
+## Architecture
+
+@.ai/vault/architecture/system-overview.md
+
+---
+
 # 🗂️ Directory Structure
 
 ```

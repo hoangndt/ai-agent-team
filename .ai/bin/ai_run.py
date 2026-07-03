@@ -80,7 +80,16 @@ KNOWN_SUBCOMMANDS = frozenset({
     "epic-breakdown-prepare", "epic-breakdown-complete",
     "epic-generate-tickets",
     "ticket", "epic",
+    "arch-init-prepare", "arch-init-complete",
 })
+
+# Sentinel ticket id reused for arch-init's per-run status/prompt machinery.
+# arch-init has no CLI ticket argument, but every reused helper (update_stage,
+# complete_stage, fail_stage, ensure_non_empty_files, build_project_context,
+# get_effective_role_skills) requires a ticket id to key a status.json — see
+# design_note.md "Status & context resolution" for why a fixed sentinel id is
+# used instead of forking ticket-less variants of those helpers.
+ARCH_INIT_TICKET = "_arch-init"
 
 
 def now() -> str:
@@ -209,6 +218,14 @@ def qa_prompt_path(ticket: str) -> Path:
 
 def qa_report_path(ticket: str) -> Path:
     return qa_dir(ticket) / "qa_report.json"
+
+
+def arch_init_dir(ticket: str) -> Path:
+    return run_path(ticket) / "arch_init"
+
+
+def arch_init_prompt_path(ticket: str) -> Path:
+    return arch_init_dir(ticket) / "arch_init_prompt.md"
 
 
 # ── EPIC PATH HELPERS ──────────────────────────────────────────────────────────
@@ -539,6 +556,23 @@ def init_ticket(ticket: str, requirement: str, domain: str = "") -> None:
     print(f"[OK] Initialized {ticket} at {run_path(ticket)} (domain={resolved_domain})")
 
 
+def ensure_arch_init_status() -> None:
+    """Create the sentinel run's status.json on first use; no-op on re-run.
+
+    arch-init has no CLI ticket id, but every reused status/prompt helper
+    (update_stage, complete_stage, fail_stage, ensure_non_empty_files,
+    build_project_context, get_effective_role_skills) requires one. Reusing
+    ARCH_INIT_TICKET here makes run_path/status_file resolve to an ordinary
+    per-ticket run directory, so none of those helpers need ticket-less variants.
+    """
+    if status_file(ARCH_INIT_TICKET).exists():
+        return
+    ensure_base_dirs()
+    run_path(ARCH_INIT_TICKET).mkdir(parents=True, exist_ok=True)
+    default_domain = load_project_config().get("default_domain", "backend")
+    save_status(ARCH_INIT_TICKET, init_status(ARCH_INIT_TICKET, default_domain))
+
+
 def require_agent_file(name: str) -> str:
     content = read(AGENTS / name)
     if not content.strip():
@@ -765,9 +799,10 @@ def build_role_prompt(ticket: str, role: str, task_instruction: str) -> str:
         "developer": "developer.md",
         "reviewer": "reviewer.md",
         "qa": "qa.md",
+        "arch_init": "arch_init.md",
     }
-    # architect_reviewer uses the same domain skills as architect (per A-7)
-    skills_role = "architect" if role == "architect_reviewer" else role
+    # architect_reviewer and arch_init reuse the same domain skills as architect (per A-7, A9)
+    skills_role = "architect" if role in ("architect_reviewer", "arch_init") else role
     role_prompt = require_agent_file(role_file_map[role])
     project_context = build_project_context(ticket)
     skill_content = load_skill_contents(get_effective_role_skills(ticket, skills_role))
@@ -1792,6 +1827,169 @@ def qa_complete(ticket: str) -> None:
     decision = parsed.get("decision", "unknown")
     complete_stage(ticket, "qa_complete", f"QA decision: {decision}")
     print(f"[OK] QA file verified for {ticket} ({decision})")
+
+
+# ── ARCH-INIT WORKFLOW ─────────────────────────────────────────────────────────
+# Project-level, ticket-less bootstrap: seeds project_config.json domains (if
+# missing) and the architecture vault from the codebase + CLAUDE.md files.
+# Uses ARCH_INIT_TICKET as a sentinel id so the ordinary per-ticket status/
+# prompt machinery can be reused unmodified. See design_note.md for the
+# full rationale ("Status & context resolution", "Main flow").
+
+def arch_init_prepare() -> None:
+    ticket = ARCH_INIT_TICKET
+    ensure_arch_init_status()
+
+    root = vault_root()
+    if root is None:
+        msg = (
+            "Vault missing or disabled (vault.enabled=false or .ai/vault absent). "
+            "Run the US-001 vault skeleton setup first, then re-run arch-init."
+        )
+        fail_stage(ticket, "arch_init_prepare", msg)
+        print(f"[ERROR] {msg}", file=sys.stderr)
+        sys.exit(1)
+
+    update_stage(ticket, "arch_init_prepare")
+    set_runner(ticket, "arch-init-prepare")
+
+    overview_path = root / "architecture" / "system-overview.md"
+    modules_dir = root / "architecture" / "modules"
+    root_claude_path = Path("CLAUDE.md")
+    dot_ai_claude_path = BASE / "CLAUDE.md"
+    import_line = "@.ai/vault/architecture/system-overview.md"
+
+    task_instruction = f"""Work inside the current repository. This is a project-level bootstrap
+with no ticket id — do not create or touch any `.ai/runs/<TICKET>/` directory other than
+`{arch_init_dir(ticket).as_posix()}`.
+
+Run the following two phases in order.
+
+## Phase 1 — config bootstrap (conditional)
+
+Read `.ai/project_config.json`.
+
+- If it already has a non-empty `"domains"` block: this phase is a no-op. Do NOT modify
+  `.ai/project_config.json`. Move on to Phase 2.
+- If it has NO `"domains"` block (or an empty one): sweep the repository, infer one or more
+  domains, and write a `"domains"` block to `.ai/project_config.json` where each domain has:
+  - `paths`: a list of directories/paths that belong to that domain
+  - `skills`: a map of role name (`architect`, `developer`, `reviewer`, `qa`) to a list of
+    existing skill file paths for that domain — wire in skill files that already exist in the
+    repo; if none exist for a role, leave that role's list empty. Do NOT author new skill file
+    content.
+  - Preserve every other existing key in `.ai/project_config.json` untouched.
+
+## Phase 2 — vault bootstrap (always)
+
+1. Resolve the domain list from `.ai/project_config.json["domains"]` (all entries — read the
+   file fresh, in case Phase 1 just wrote it).
+2. Sweep the codebase to understand components, entry points, data flows, and invariants.
+3. Read `{root_claude_path.as_posix()}` and `{dot_ai_claude_path.as_posix()}` (either or both may
+   not exist — treat a missing file as having no architecture prose). Extract any `## Architecture`
+   section content from each. If the same architecture prose appears in both files, include it only
+   once in the seeded vault content (dedupe the union).
+4. Re-run / template-detection rule (apply to every vault file below before overwriting it):
+   a vault file is "still a template" if and only if it contains at least one HTML comment
+   (`<!-- ... -->`). If it contains one, it is safe to overwrite. If it contains none, treat it as
+   already-real content: do NOT overwrite it, and instead add a line to your implementation output
+   like `skipped <file>, already contains real content`.
+5. Write `{overview_path.as_posix()}`:
+   - Project-wide content derived from the repo sweep, plus any migrated architecture prose.
+   - Keep the exact fixed headings and their order: `## Components`, `## Data Flows`,
+     `## Invariants / Constraints`, `## ADR Index` (this is a contract read by later tooling —
+     do not rename or reorder them).
+   - Remove all HTML-comment placeholders; every heading must have real content.
+6. Write `{modules_dir.as_posix()}/<domain>.md` for each resolved domain (one file per domain),
+   following the structure of `{modules_dir.as_posix()}/_domain.template.md` (Responsibility, Key
+   Components, How It Works, Entry Points, Dependencies, Gotchas / Invariants) with real,
+   domain-specific content and no HTML-comment placeholders remaining.
+7. Update `{root_claude_path.as_posix()}`:
+   - If it has an `## Architecture` heading, replace that section's prose with a single line:
+     `{import_line}`
+   - If it has no `## Architecture` heading, insert a new `## Architecture` section containing
+     only that import line, placed immediately after the top-level H1 title/intro and before the
+     next existing section.
+   - If `{root_claude_path.as_posix()}` does not exist at all, create a minimal one containing just
+     an `## Architecture` section with the import line.
+   - If the import line is already present, leave it as-is (idempotent).
+8. Update `{dot_ai_claude_path.as_posix()}` if it exists: strip out any `## Architecture` section(s)
+   whose content was migrated into the vault in step 3, preserving every other section verbatim.
+   If the file does not exist, this step is a no-op — do not create it.
+
+## Rules
+
+- Do not invent domains, paths, or skills that don't reflect the actual repository.
+- Preserve all non-architecture, hand-written content in both CLAUDE.md files verbatim.
+- Do not author new skill file content (Phase 1) or new ADRs (out of scope).
+- Do not run `git add`/`git commit`/`git push`. Leave every edit as a working-tree change for
+  human review via `git diff`.
+- Target the caps of roughly 200 lines for system-overview.md and 400 lines per module doc, but
+  do not fail the task if you go over — that is enforced elsewhere.
+
+## Important
+
+- Do not reply in chat with the file contents.
+- Write every file directly to the paths above.
+- In your final output, summarize what Phase 1 did (or that it was a no-op) and list every vault
+  file written vs. skipped (per the template-detection rule in step 4).
+"""
+    prompt = build_role_prompt(ticket, "arch_init", task_instruction)
+    write(arch_init_prompt_path(ticket), prompt)
+    set_artifact(ticket, "arch_init_prompt", arch_init_prompt_path(ticket))
+    complete_stage(ticket, "arch_init_prepare", "Generated arch-init prompt.")
+    print(f"[OK] Wrote {arch_init_prompt_path(ticket)}")
+    print(
+        "[NEXT] Paste this prompt into Claude/Copilot. Let it perform the sweep and write "
+        "the config/vault/CLAUDE.md files directly, then run arch-init-complete."
+    )
+
+
+def arch_init_complete() -> None:
+    ticket = ARCH_INIT_TICKET
+    update_stage(ticket, "arch_init_complete")
+    set_runner(ticket, "arch-init-complete")
+
+    root = vault_root()
+    if root is None:
+        msg = "Vault missing or disabled — cannot verify arch-init outputs."
+        fail_stage(ticket, "arch_init_complete", msg)
+        raise FileNotFoundError(msg)
+
+    overview_path = root / "architecture" / "system-overview.md"
+    ensure_non_empty_files([overview_path], "arch_init_complete", ticket)
+
+    config = load_project_config()
+    domains = config.get("domains", {})
+    if not domains:
+        msg = "project_config.json has no domains after arch-init act (Phase 1 must populate it)."
+        fail_stage(ticket, "arch_init_complete", msg)
+        raise ValueError(msg)
+
+    modules_dir = root / "architecture" / "modules"
+    module_candidates = [modules_dir / f"{domain}.md" for domain in domains]
+    non_empty_modules = [p for p in module_candidates if p.exists() and read(p).strip()]
+    if not non_empty_modules:
+        msg = (
+            "No non-empty module doc found among: "
+            + ", ".join(p.as_posix() for p in module_candidates)
+        )
+        fail_stage(ticket, "arch_init_complete", msg)
+        raise FileNotFoundError(msg)
+
+    root_claude_path = Path("CLAUDE.md")
+    import_line = "@.ai/vault/architecture/system-overview.md"
+    if import_line not in read(root_claude_path):
+        msg = f"{root_claude_path.as_posix()} is missing the import line: {import_line}"
+        fail_stage(ticket, "arch_init_complete", msg)
+        raise FileNotFoundError(msg)
+
+    set_artifact(ticket, "vault_overview", overview_path)
+    set_artifact(ticket, "vault_modules_dir", modules_dir)
+
+    complete_stage(ticket, "arch_init_complete", f"arch-init outputs verified ({len(non_empty_modules)} module doc(s)).")
+    print(f"[OK] arch-init outputs verified ({len(non_empty_modules)} module doc(s)).")
+    print("[REVIEW] Run `git diff` to review every arch-init edit before committing — nothing was auto-committed.")
 
 
 # ── EPIC WORKFLOW ──────────────────────────────────────────────────────────────
@@ -3043,6 +3241,16 @@ def build_parser() -> argparse.ArgumentParser:
         p = sub.add_parser(cmd, help=f"Run {cmd}")
         p.add_argument("ticket", help="Ticket ID, e.g. TICKET-123")
 
+    sub.add_parser(
+        "arch-init-prepare",
+        help="Project-level: bootstrap project_config.json domains (if missing) and generate "
+        "the arch-init prompt to seed the architecture vault. Takes no ticket id.",
+    )
+    sub.add_parser(
+        "arch-init-complete",
+        help="Verify arch-init outputs (vault files + CLAUDE.md import line). Takes no ticket id.",
+    )
+
     p_next = sub.add_parser("next", help="Show or run the next step.")
     p_next.add_argument("ticket", help="Ticket ID, e.g. TICKET-123")
     p_next.add_argument(
@@ -3244,6 +3452,10 @@ def main() -> int:
             qa_complete(args.ticket)
         elif args.command == "status":
             show_status(args.ticket)
+        elif args.command == "arch-init-prepare":
+            arch_init_prepare()
+        elif args.command == "arch-init-complete":
+            arch_init_complete()
         elif args.command == "next":
             engine = resolve_engine(args.engine)
             next_step(args.ticket, execute=args.run, run_auto=args.run_auto, engine=engine)
