@@ -61,6 +61,10 @@ Write to:
 
 - Design compromises
 - Known weaknesses
+- **For each significant decision, state the alternatives considered and why they
+  were rejected** — not just the choice made. This is required, not optional: the
+  distiller stage turns this section directly into ADRs after epic approval, and an
+  ADR without a stated alternative is a decision with no recorded justification.
 
 ## 8. Open Questions
 
