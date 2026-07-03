@@ -1,0 +1,26 @@
+{
+  "decision": "request_changes",
+  "issues": [
+    {
+      "severity": "high",
+      "area": "architecture",
+      "message": "D1 says distill 'runs prepare → act → verify internally' as sub-step of qa_complete, implying full automation with no human paste step. But every other stage (architect/dev/review/qa) is human-in-loop: act = paste prompt into Claude session, only prepare/complete run unattended. Design never explains how qa_complete synchronously invokes an LLM to perform the 'act' (vault rewrite) — no API call mechanism, no wezterm auto-spawn hookup like --run-auto uses for other prepare steps. Either distill needs a manual prepare/act/complete cycle (contradicting 'sub-step of qa_complete', and breaking the auto-advance chain since qa_complete can't block waiting on a human), or a new automated-invocation mechanism is required and must be specified. This is unresolved and blocks feasibility of the core self-maintenance loop."
+    },
+    {
+      "severity": "medium",
+      "area": "risk",
+      "message": "Overview cap enforcement is 'fatal-retry' but no bound is given: if the overview is still over cap after the compress re-run, behavior is undefined. This can deadlock the ticket pipeline (qa_complete/distill_complete never succeeds) with no documented fallback (e.g., max N retries then warn-and-proceed, or escalate to human). Module cap has an explicit soft-fail path; overview needs the same clarity."
+    },
+    {
+      "severity": "medium",
+      "area": "sequencing",
+      "message": "Component list (3.3) names distill_prepare/distill_complete as ai_run.py functions but Section 8 sequencing and the CLI/stage tables elsewhere in this repo's workflow are never updated to show whether these are internal helpers only, or exposed subcommands. Given the high-severity ambiguity above about how 'act' happens, this needs to be pinned down explicitly (e.g., 'distill-prepare/distill-complete are new CLI subcommands invoked manually like other *-prepare/*-complete pairs, and qa_complete only triggers the prepare step automatically') before breakdown can produce accurate tickets."
+    },
+    {
+      "severity": "low",
+      "area": "completeness",
+      "message": "arch-refresh's drift report has no specified output location/format (e.g., a markdown diff file under vault/, or stdout only). Minor, but breakdown will need this to scope the ticket."
+    }
+  ],
+  "summary": "Design is thorough and resolves nearly all open questions from analysis (distill hook point, injection breadth, ADR numbering, module cap, config shape, multi-domain handling) with clear rationale and a sensible phased rollout. However, the core self-maintenance mechanism (distill running as an automatic sub-step of qa_complete) is not actually specified at the level of 'how does an LLM get invoked without a human pasting a prompt' — this is a load-bearing assumption for the epic's main goal (freshness by process, not discipline) and must be resolved before breakdown. Overview cap retry-exhaustion behavior also needs a defined terminal state. Fix these and re-submit for approval."
+}

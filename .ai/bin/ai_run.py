@@ -678,6 +678,69 @@ def build_figma_context(ticket: str) -> str:
     return "\n".join(lines)
 
 
+def _cap_lines(text: str, cap: int) -> str:
+    text = text.strip()
+    if not text or cap <= 0:
+        return ""
+    lines = text.split("\n")
+    return "\n".join(lines[:cap])
+
+
+def vault_root() -> Optional[Path]:
+    cfg = load_project_config().get("vault", {})
+    if cfg.get("enabled", True) is False:
+        return None
+    root = Path(cfg.get("path", ".ai/vault"))
+    return root if root.is_dir() else None
+
+
+def read_vault_overview() -> str:
+    root = vault_root()
+    if not root:
+        return ""
+    cfg = load_project_config().get("vault", {})
+    cap = cfg.get("overview_cap_lines", 200)
+    text = read(root / "architecture" / "system-overview.md")
+    return _cap_lines(text, cap)
+
+
+def read_vault_modules(domains: List[str], role: str) -> str:
+    cfg = load_project_config().get("vault", {})
+    inject_roles = cfg.get(
+        "inject_modules_for", ["architect", "developer", "epic_analyst", "epic_designer"]
+    )
+    if role not in inject_roles:
+        return ""
+    root = vault_root()
+    if not root:
+        return ""
+    cap = cfg.get("module_cap_lines", 400)
+    chunks: List[str] = []
+    seen = set()
+    for domain in domains:
+        if domain in seen:
+            continue
+        seen.add(domain)
+        text = read(root / "architecture" / "modules" / f"{domain}.md")
+        text = _cap_lines(text, cap)
+        if text:
+            chunks.append(text)
+    return "\n\n".join(chunks)
+
+
+def build_vault_context(domains: List[str], role: str) -> str:
+    overview = read_vault_overview()
+    modules = read_vault_modules(domains, role)
+    if not overview and not modules:
+        return ""
+    parts = ["# Architecture (Vault)"]
+    if overview:
+        parts.extend(["", "## System Overview", overview])
+    if modules:
+        parts.extend(["", "## Domain Modules", modules])
+    return "\n".join(parts)
+
+
 def build_project_context(ticket: str) -> str:
     config = load_project_config()
     domain = get_ticket_domain(ticket)
@@ -717,6 +780,10 @@ def build_role_prompt(ticket: str, role: str, task_instruction: str) -> str:
         "# Project Context",
         project_context,
     ]
+
+    vault_context = build_vault_context([get_ticket_domain(ticket)], role)
+    if vault_context:
+        parts.extend(["", vault_context])
 
     if skill_content:
         parts.extend(["", "# Domain Skills", skill_content])
@@ -949,6 +1016,11 @@ def build_epic_role_prompt(epic: str, role: str, task_instruction: str) -> str:
         "# Project Context",
         project_context,
     ]
+
+    vault_context = build_vault_context(get_epic_domains(epic), role)
+    if vault_context:
+        parts.extend(["", vault_context])
+
     if skill_content:
         parts.extend(["", "# Domain Skills", skill_content])
     parts.extend(["", "# Task Instruction", task_instruction.strip()])

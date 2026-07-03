@@ -1,0 +1,11 @@
+{
+  "decision": "approve",
+  "issues": [
+    {
+      "severity": "low",
+      "area": "sequencing",
+      "message": "D1 revised has qa_complete call distill_prepare(ticket) directly (pure Python, on pass) AND separately states next/next --run-auto 'resolves to it immediately after a passing qa-complete' via the stage router — meaning distill_prepare could run twice for the same ticket (once inline in qa_complete, once via router dispatch). Harmless since it's idempotent (regenerates the same prompt file), but breakdown tickets should clarify which path is canonical to avoid duplicate-invocation confusion during implementation."
+    }
+  ],
+  "summary": "All prior issues resolved. High: D1's core feasibility gap (how does an automated 'act' step happen without a synchronous LLM-invocation mechanism) is fixed — distill is now correctly specified as a full human-in-loop prepare/act/complete stage like every other role, with qa_complete only auto-invoking the pure-Python prepare step; this was confirmed against actual ai_run.py call sites (spawn_ai_wezterm, ENGINE_REGISTRY). Medium: overview-cap retry-exhaustion now has a defined terminal state (one bounded auto-retry, then block the stage and write fix/vault_cap_exceeded.md for human trim) instead of undefined behavior. Medium: distill-prepare/distill-complete and adr-distill-prepare/adr-distill-complete are now explicitly named as new CLI subcommands registered in KNOWN_SUBCOMMANDS/sub.add_parser/stage routers, not ambiguous internal helpers. Low: arch-refresh drift report output location is now specified (.ai/vault/architecture/_drift_report.md). One new low-severity clarification surfaced by the revision (duplicate distill_prepare invocation path) but it is non-blocking. Design is feasible, complete, and aligned with stated requirements — safe to break down."
+}

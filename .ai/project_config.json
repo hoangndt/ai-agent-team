@@ -11,6 +11,13 @@
     "poll_interval_seconds": 15,
     "timeout_seconds": 1800
   },
+  "vault": {
+    "enabled": true,
+    "path": ".ai/vault",
+    "overview_cap_lines": 200,
+    "module_cap_lines": 400,
+    "inject_modules_for": ["architect", "developer", "epic_analyst", "epic_designer"]
+  },
   "domains": {
     "workflow": {
       "paths": [
