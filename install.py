@@ -40,6 +40,18 @@ MANAGED_DIRS = [
     Path(".ai/templates"),
 ]
 
+# Vault content: project-owned, scaffolded on fresh install, skipped on upgrade.
+# Explicit (src_rel, dst_rel) pairs, relative to .ai/templates/vault/ and .ai/vault/architecture/
+# respectively. This is the exact, exhaustive file set for this ticket — extend, don't replace,
+# when later tickets add generated vault files.
+VAULT_TEMPLATE_DIR = Path(".ai/templates/vault")
+VAULT_CONTENT_DIR = Path(".ai/vault/architecture")
+VAULT_FILES = [
+    ("system-overview.md", "system-overview.md"),
+    ("modules/_domain.template.md", "modules/_domain.template.md"),
+    ("decisions/ADR-NNN-template.md", "decisions/ADR-NNN-template.md"),
+]
+
 # Sentinel file to verify we are running from inside the source repo
 SOURCE_SENTINEL = Path(".ai/bin/ai_run.py")
 
@@ -108,7 +120,9 @@ def backup_managed_files(
                     shutil.copy2(f, dst)
                 backed_up.append(str(rel))
     if include_project_files:
-        for project_file_rel in [Path(".ai/project_config.json"), Path(".ai/CLAUDE.md")]:
+        project_file_rels = [Path(".ai/project_config.json"), Path(".ai/CLAUDE.md")]
+        project_file_rels += [VAULT_CONTENT_DIR / dst_rel for _, dst_rel in VAULT_FILES]
+        for project_file_rel in project_file_rels:
             src = target / project_file_rel
             if src.exists():
                 dst = backup_dir / project_file_rel
@@ -225,6 +239,18 @@ def install_ai(target: Path, args: argparse.Namespace) -> int:
     else:
         planned_summary.append(f"[INIT] .ai/CLAUDE.md")
 
+    # Vault skeleton
+    vault_template_src = source_root / VAULT_TEMPLATE_DIR
+    if not vault_template_src.is_dir():
+        planned_summary.append(f"[WARNING] {VAULT_TEMPLATE_DIR} (source templates not found)")
+    else:
+        for _, dst_rel in VAULT_FILES:
+            dst = target / VAULT_CONTENT_DIR / dst_rel
+            if dst.exists() and not args.force_project_files:
+                planned_summary.append(f"[SKIP] {VAULT_CONTENT_DIR / dst_rel} (already exists)")
+            else:
+                planned_summary.append(f"[INIT] {VAULT_CONTENT_DIR / dst_rel} (from template)")
+
     # Skills
     if args.with_skills:
         skills_src = source_root / "examples" / args.with_skills / "skills"
@@ -335,6 +361,26 @@ def install_ai(target: Path, args: argparse.Namespace) -> int:
                 return 1
         else:
             print_action("WARNING", ".ai/CLAUDE.md", "source CLAUDE.md not found — skipped", dry_run=dry_run)
+
+    # --- Scaffold vault skeleton ---
+    if not vault_template_src.is_dir():
+        print_action("WARNING", str(VAULT_TEMPLATE_DIR), "source templates not found — skipped", dry_run=dry_run)
+    else:
+        for src_rel, dst_rel in VAULT_FILES:
+            src = vault_template_src / src_rel
+            dst = target / VAULT_CONTENT_DIR / dst_rel
+            rel_display = str(VAULT_CONTENT_DIR / dst_rel)
+            if dst.exists() and not args.force_project_files:
+                print_action("SKIP", rel_display, "(already exists, use --force-project-files to overwrite)", dry_run=dry_run)
+                continue
+            try:
+                if not dry_run:
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(src, dst)
+                print_action("INIT", rel_display, "(created from template)", dry_run=dry_run)
+            except OSError as e:
+                print(f"ERROR: Failed to scaffold vault file '{rel_display}': {e}", file=sys.stderr)
+                return 1
 
     # --- Copy skills (--with-skills) ---
     if args.with_skills:
