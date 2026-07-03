@@ -63,6 +63,7 @@ STEP_MODEL: Dict[str, Tuple[str, str]] = {
     "distill-prepare":          ("sonnet", "medium"),
     "epic-review-prepare":      ("sonnet", "medium"),
     "epic-breakdown-prepare":   ("opus", "medium"),
+    "adr-distill-prepare":      ("sonnet", "medium"),
 }
 
 KNOWN_SUBCOMMANDS = frozenset({
@@ -80,6 +81,7 @@ KNOWN_SUBCOMMANDS = frozenset({
     "epic-review-prepare", "epic-review-complete",
     "epic-design-fix-prepare", "epic-design-fix-complete",
     "epic-breakdown-prepare", "epic-breakdown-complete",
+    "adr-distill-prepare", "adr-distill-complete",
     "epic-generate-tickets",
     "ticket", "epic",
     "arch-init-prepare", "arch-init-complete",
@@ -335,6 +337,14 @@ def epic_story_status_path(epic: str) -> Path:
     return epic_breakdown_dir(epic) / "epic_story_status.md"
 
 
+def adr_distill_dir(epic: str) -> Path:
+    return epic_path(epic) / "adr_distill"
+
+
+def adr_distill_prompt_path(epic: str) -> Path:
+    return adr_distill_dir(epic) / "adr_distill_prompt.md"
+
+
 def read(path: Path) -> str:
     if not path.exists():
         return ""
@@ -375,6 +385,7 @@ def ensure_epic_dirs(epic: str) -> None:
         epic_fix_dir(epic),
         epic_breakdown_dir(epic),
         epic_tickets_dir(epic),
+        adr_distill_dir(epic),
     ]:
         path.mkdir(parents=True, exist_ok=True)
 
@@ -1110,10 +1121,15 @@ def build_epic_role_prompt(epic: str, role: str, task_instruction: str) -> str:
         "epic_designer": "epic_designer.md",
         "epic_reviewer": "epic_reviewer.md",
         "epic_planner": "epic_planner.md",
+        "distiller": "distiller.md",
     }
+    # distiller reuses architect domain skills on the epic side too, mirroring the
+    # ticket-side alias in build_role_prompt — omitting it silently resolves to an
+    # empty skill list instead of the intended reuse.
+    skills_role = "architect" if role == "distiller" else role
     role_prompt = require_agent_file(role_file_map[role])
     project_context = build_epic_project_context(epic)
-    skill_content = load_skill_contents(get_epic_role_skills(epic, role))
+    skill_content = load_skill_contents(get_epic_role_skills(epic, skills_role))
     parts = [
         "# Role Instruction",
         role_prompt,
@@ -2070,6 +2086,14 @@ write a map, not an encyclopedia — drop prose, merge redundant rows, prune sta
     overview_target = root / "architecture" / "system-overview.md"
     module_target = root / "architecture" / "modules" / f"{domain}.md"
 
+    epic_prefix_match = re.match(r"^(EPIC-\d+)-", ticket)
+    epic_prefix = epic_prefix_match.group(1) if epic_prefix_match else None
+    epic_scope_note = (
+        f"This ticket's epic prefix is `{epic_prefix}`."
+        if epic_prefix
+        else "This ticket has no `EPIC-NNN-` prefix — it implements no epic-level ADR."
+    )
+
     task_instruction = f"""Work inside the current repository.
 
 Refresh the architecture vault to reflect this ticket's changes. The current
@@ -2094,9 +2118,26 @@ Rules:
   `## Data Flows`, `## Invariants / Constraints`, `## ADR Index`.
 - Only update what this ticket's Architecture Impact actually changed — this is a
   map, not an encyclopedia. Prune stale `planned` entries this ticket superseded.
-- If the Architecture Impact warrants recording a decision, use {adr_id} for its
-  id — append or flip `tickets:` in the corresponding file under
-  `.ai/vault/architecture/decisions/`. Do not invent a different id.
+- ADR handling — two modes. {epic_scope_note}
+  - **Flip an existing epic-approved decision:** if this ticket has an epic
+    prefix, look at every `proposed`/`accepted` ADR under
+    `.ai/vault/architecture/decisions/` whose `epic:` matches that prefix. If
+    exactly one plausibly matches the decision this ticket implements, append
+    this ticket's id to that ADR's `tickets:` list, flip its `status` from
+    `proposed` to `accepted` if this is the first implementing ticket (leave
+    `accepted` as-is on later tickets), and flip the matching module-doc entry
+    from `planned` to `current`.
+  - **Ambiguous match:** if zero or more than one epic-scoped ADR plausibly
+    matches, do NOT flip any ADR or module entry — print a `[FLAG]` line naming
+    this ticket's id, its epic prefix, and (if multiple) the candidate ADR ids,
+    for manual resolution.
+  - **New, ticket-only decision:** if the Architecture Impact warrants
+    recording a decision not already tracked by an epic ADR, use {adr_id} for
+    its id and write a new `proposed` ADR file under
+    `.ai/vault/architecture/decisions/`. Do not invent a different id.
+- Prune signal: if you notice any `proposed` ADR (in or outside this ticket's
+  epic scope) with an empty `tickets:` list, print a `[PRUNE]` line naming that
+  ADR id and its associated `planned` module entry.
 - If the Architecture Impact has no delta for a dimension, leave it unchanged.
 - Do not run git add/commit/push — leave all edits as working-tree changes.
 
@@ -2584,6 +2625,220 @@ def epic_review_complete(epic: str) -> None:
     complete_epic_stage(epic, "epic_review_complete", f"Epic reviewer decision: {decision}")
     print(f"[OK] Epic review verified for {epic} ({decision})")
 
+    # Runs last, after epic_review_complete's own status transition, so
+    # adr_distill_prepare's update_epic_stage/complete_epic_stage calls are what
+    # current_stage ends up as (not overwritten back to "epic_review_complete") —
+    # same ordering guarantee as qa_complete -> distill_prepare on the ticket side.
+    # A failure inside adr_distill_prepare must not corrupt the already-committed
+    # review decision (FC-6).
+    if decision == "approve":
+        adr_distill_prepare(epic)
+
+
+# ── EPIC ADR DISTILL WORKFLOW (write path) ──────────────────────────────────────
+# Epic-level ADR lifecycle, auto-triggered by epic_review_complete on an approved
+# review. Mirrors the ticket-side distill prepare/complete shape (US-005). See
+# design_note.md "Which ADRs to verify" for why selection is filename-id-based
+# rather than trusting each ADR's own `epic:` field.
+
+_ADR_VALID_STATUSES = {"proposed", "accepted", "superseded"}
+
+
+def _parse_adr_frontmatter(text: str) -> Dict[str, object]:
+    """Minimal stdlib-only frontmatter parser for ADR files (VC-1: no yaml import).
+
+    Parses the leading '---' block into key: value pairs. A bracketed value (e.g.
+    `tickets: []` or `tickets: [US-001, US-002]`) is parsed as a list; everything
+    else is a stripped string. Returns {} if there is no leading '---' block.
+    """
+    lines = text.splitlines()
+    if not lines or lines[0].strip() != "---":
+        return {}
+    end = None
+    for i in range(1, len(lines)):
+        if lines[i].strip() == "---":
+            end = i
+            break
+    if end is None:
+        return {}
+
+    fm: Dict[str, object] = {}
+    for line in lines[1:end]:
+        line = line.split("#", 1)[0].rstrip()
+        if not line.strip() or ":" not in line:
+            continue
+        key, _, value = line.partition(":")
+        key = key.strip()
+        value = value.strip()
+        if value.startswith("[") and value.endswith("]"):
+            inner = value[1:-1].strip()
+            fm[key] = (
+                [v.strip().strip('"').strip("'") for v in inner.split(",") if v.strip()]
+                if inner
+                else []
+            )
+        else:
+            fm[key] = value.strip('"').strip("'")
+    return fm
+
+
+def _adr_frontmatter_errors(fm: Dict[str, object]) -> List[str]:
+    errors = []
+    for field in ("id", "status", "epic", "tickets"):
+        if field not in fm:
+            errors.append(f"missing '{field}'")
+    if "status" in fm and fm["status"] not in _ADR_VALID_STATUSES:
+        errors.append(
+            f"invalid status '{fm['status']}' (must be one of {sorted(_ADR_VALID_STATUSES)})"
+        )
+    return errors
+
+
+def _epic_stage_completed_in_history(epic: str, stage: str) -> bool:
+    history = load_epic_status(epic).get("history", [])
+    return any(h.get("stage") == stage and h.get("status") == "done" for h in history)
+
+
+def adr_distill_prepare(epic: str) -> None:
+    root = vault_root()
+    if root is None:
+        # Vault-disabled contract (FC-1): no-op without mutating current_stage or
+        # artifacts, mirroring ticket-side distill_prepare.
+        print(f"[SKIP] Vault disabled; adr_distill_prepare no-op for {epic}")
+        return
+
+    update_epic_stage(epic, "adr_distill_prepare")
+    set_epic_runner(epic, "adr-distill-prepare")
+
+    # Persist the start id on epic status *before* building the prompt, so
+    # adr_distill_complete can select ADRs by filename id even if the agent
+    # writes a malformed/missing `epic:` field (fix for review finding
+    # data_flow/high — see design_note.md "Which ADRs to verify").
+    start_id = next_adr_id()
+    s = load_epic_status(epic)
+    s["adr_distill_start_id"] = start_id
+    s["updated_at"] = now()
+    save_epic_status(epic, s)
+
+    adr_id = f"ADR-{start_id}"
+
+    task_instruction = f"""Work inside the current repository.
+
+This epic's design review was approved. Distill its architecture decisions into
+the vault's ADR log (epic-approval mode).
+
+Read these files:
+{file_ref_list([epic_design_path(epic)])}
+
+Next free ADR id for this epic: {adr_id}
+
+Write one or more `proposed` ADR files under
+`.ai/vault/architecture/decisions/`, one per distinct decision worth recording
+from epic_design.md's Risks / Trade-offs section (§7) and its alternatives
+considered. Use {adr_id} for the first ADR; increment sequentially for any
+additional ADRs from this epic. If nothing in this epic warrants a recorded
+decision, write no ADR files and say so in chat (this is a valid outcome).
+
+Each ADR file must follow `ADR-NNN-template.md`'s frontmatter shape exactly:
+- `id`: the ADR id (e.g. {adr_id})
+- `status: proposed`
+- `epic: {epic}`
+- `tickets: []`
+- `supersedes:` (empty unless this decision supersedes an existing ADR)
+
+Also mark the module-doc entry (or entries) this decision will affect in the
+relevant `.ai/vault/architecture/modules/<domain>.md` file `status: planned`,
+linking back to the ADR id.
+
+Prune signal:
+- While you're in the decisions directory, if you notice any existing
+  `proposed` ADR with an empty `tickets:` list, print a `[PRUNE]` line naming
+  that ADR id and its associated `planned` module entry.
+
+Important:
+- Do not run git add/commit/push — leave all edits as working-tree changes.
+- Write the ADR/module files directly. Do not reply in chat with their final content.
+"""
+    prompt = build_epic_role_prompt(epic, "distiller", task_instruction)
+    write(adr_distill_prompt_path(epic), prompt)
+    set_epic_artifact(epic, "adr_distill_prompt", adr_distill_prompt_path(epic))
+    complete_epic_stage(epic, "adr_distill_prepare", "Generated ADR distill prompt.")
+    print(f"[OK] Wrote {adr_distill_prompt_path(epic)}")
+    print(
+        "[NEXT] Paste this prompt into Claude. Let it write the ADR file(s), then run epic-next --run."
+    )
+
+
+def adr_distill_complete(epic: str) -> None:
+    update_epic_stage(epic, "adr_distill_complete")
+    set_epic_runner(epic, "adr-distill-complete")
+
+    root = vault_root()
+    if root is None:
+        # Defensive only — epic_next_action's ADR-distill block is itself guarded
+        # on vault_root(), but a manual CLI invocation shouldn't crash.
+        complete_epic_stage(epic, "adr_distill_complete", "Vault disabled; nothing to verify.")
+        print(f"[OK] Vault disabled; adr_distill_complete no-op for {epic}")
+        return
+
+    start_id_raw = load_epic_status(epic).get("adr_distill_start_id")
+    if not start_id_raw:
+        complete_epic_stage(
+            epic, "adr_distill_complete", "No adr_distill_start_id recorded; nothing to verify."
+        )
+        print(f"[OK] No ADR distill start id recorded for {epic}; nothing to verify.")
+        return
+    start_id = int(start_id_raw)
+
+    # Selection is by filename id (>= start_id), not by each file's own `epic:`
+    # field (fix for review finding data_flow/high) — a missing/malformed `epic:`
+    # can no longer hide an ADR from verification (FC-3). Uses the same
+    # `^ADR-(\d{3})` regex next_adr_id() scans with, so ADR-NNN-template.md is
+    # skipped the same way.
+    decisions_dir = root / "architecture" / "decisions"
+    selected: List[Path] = []
+    if decisions_dir.is_dir():
+        for path in sorted(decisions_dir.iterdir()):
+            if not path.is_file():
+                continue
+            match = re.match(r"^ADR-(\d{3})", path.name)
+            if match and int(match.group(1)) >= start_id:
+                selected.append(path)
+
+    if not selected:
+        # FC-2: zero epic-linked ADRs is pass-with-note, not a failure.
+        complete_epic_stage(
+            epic, "adr_distill_complete", "No new ADRs written for this epic; pass-with-note."
+        )
+        print(f"[OK] No new ADRs for {epic}; pass-with-note.")
+        return
+
+    errors: List[str] = []
+    pruned: List[str] = []
+    for path in selected:
+        fm = _parse_adr_frontmatter(read(path))
+        field_errors = _adr_frontmatter_errors(fm)
+        if field_errors:
+            errors.append(f"{path.name}: {'; '.join(field_errors)}")
+            continue
+        if fm.get("status") == "proposed" and not fm.get("tickets"):
+            pruned.append(str(fm.get("id", path.name)))
+
+    for adr_id in pruned:
+        print(f"[PRUNE] {adr_id} is proposed with no implementing tickets yet.")
+
+    if errors:
+        msg = "Malformed ADR frontmatter:\n" + "\n".join(f"  {e}" for e in errors)
+        fail_epic_stage(epic, "adr_distill_complete", msg)
+        print(f"[BLOCK] {msg}")
+        raise ValueError(msg)
+
+    note = f"{len(selected)} ADR(s) verified"
+    if pruned:
+        note += f"; {len(pruned)} pending tickets"
+    complete_epic_stage(epic, "adr_distill_complete", note)
+    print(f"[OK] ADR distill verified for {epic} ({len(selected)} ADR(s))")
+
 
 def epic_design_fix_prepare(epic: str) -> None:
     update_epic_stage(epic, "epic_design_fix_prepare")
@@ -3008,6 +3263,17 @@ def epic_next_action(epic: str) -> str:
 
     # Breakdown after approved review
     if review_decision == "approve":
+        # ADR distill (auto-triggered by epic_review_complete on approve) runs
+        # before breakdown. Guarded on vault_root() so vault-less epics skip
+        # straight to breakdown (FC-1/backward-compat).
+        if vault_root() is not None:
+            if not adr_distill_prompt_path(epic).exists():
+                return "adr-distill-prepare"
+            if current_stage == "adr_distill_prepare":
+                return "adr-distill-complete"
+            if not _epic_stage_completed_in_history(epic, "adr_distill_complete"):
+                return "adr-distill-complete"
+
         if not epic_story_map_path(epic).exists() or not read(epic_story_map_path(epic)).strip():
             if current_stage == "epic_breakdown_prepare":
                 return "epic-breakdown-complete"
@@ -3031,6 +3297,8 @@ def run_named_epic_step(epic: str, step: str) -> None:
         "epic-design-fix-complete": epic_design_fix_complete,
         "epic-breakdown-prepare": epic_breakdown_prepare,
         "epic-breakdown-complete": epic_breakdown_complete,
+        "adr-distill-prepare": adr_distill_prepare,
+        "adr-distill-complete": adr_distill_complete,
     }
     if step == "done":
         print("Epic looks complete. Review the story map and ticket files.")
@@ -3046,6 +3314,7 @@ _EPIC_PREPARE_STEP_PROMPT: Dict[str, object] = {
     "epic-design-fix-prepare": epic_design_fix_prompt_path,
     "epic-review-prepare": epic_review_prompt_path,
     "epic-breakdown-prepare": epic_breakdown_prompt_path,
+    "adr-distill-prepare": adr_distill_prompt_path,
 }
 
 
@@ -3275,6 +3544,7 @@ _EPIC_PREPARE_TO_COMPLETE: Dict[str, str] = {
     "epic-design-fix-prepare": "epic-design-fix-complete",
     "epic-review-prepare":     "epic-review-complete",
     "epic-breakdown-prepare":  "epic-breakdown-complete",
+    "adr-distill-prepare":     "adr-distill-complete",
 }
 
 
@@ -3689,6 +3959,8 @@ def build_parser() -> argparse.ArgumentParser:
         "epic-design-fix-complete",
         "epic-breakdown-prepare",
         "epic-breakdown-complete",
+        "adr-distill-prepare",
+        "adr-distill-complete",
         "epic-status",
     ]:
         p = sub.add_parser(cmd, help=f"Run {cmd}")
@@ -3883,6 +4155,10 @@ def main() -> int:
             epic_breakdown_prepare(args.epic)
         elif args.command == "epic-breakdown-complete":
             epic_breakdown_complete(args.epic)
+        elif args.command == "adr-distill-prepare":
+            adr_distill_prepare(args.epic)
+        elif args.command == "adr-distill-complete":
+            adr_distill_complete(args.epic)
         elif args.command == "epic-generate-tickets":
             epic_generate_tickets(args.epic, init_dirs=args.init_dirs)
         elif args.command == "epic-status":
