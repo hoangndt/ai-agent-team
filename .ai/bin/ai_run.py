@@ -2087,9 +2087,10 @@ write a map, not an encyclopedia — drop prose, merge redundant rows, prune sta
     module_target = root / "architecture" / "modules" / f"{domain}.md"
 
     epic_prefix_match = re.match(r"^(EPIC-\d+)-", ticket)
-    epic_prefix = epic_prefix_match.group(1) if epic_prefix_match else None
+    epic_prefix = epic_prefix_match.group(1).lower() if epic_prefix_match else None
     epic_scope_note = (
-        f"This ticket's epic prefix is `{epic_prefix}`."
+        f"This ticket's epic prefix is `{epic_prefix}` (epic dir/ADR `epic:` values are "
+        f"lowercase full slugs starting with this prefix, e.g. `{epic_prefix}-mvp`)."
         if epic_prefix
         else "This ticket has no `EPIC-NNN-` prefix — it implements no epic-level ADR."
     )
@@ -2121,8 +2122,10 @@ Rules:
 - ADR handling — two modes. {epic_scope_note}
   - **Flip an existing epic-approved decision:** if this ticket has an epic
     prefix, look at every `proposed`/`accepted` ADR under
-    `.ai/vault/architecture/decisions/` whose `epic:` matches that prefix. If
-    exactly one plausibly matches the decision this ticket implements, append
+    `.ai/vault/architecture/decisions/` whose `epic:` value starts with (or
+    equals) that prefix — e.g. prefix `epic-001` matches an ADR with
+    `epic: epic-001-living-architecture-doc`. If exactly one plausibly matches
+    the decision this ticket implements, append
     this ticket's id to that ADR's `tickets:` list, flip its `status` from
     `proposed` to `accepted` if this is the first implementing ticket (leave
     `accepted` as-is on later tickets), and flip the matching module-doc entry
@@ -2625,19 +2628,21 @@ def epic_review_complete(epic: str) -> None:
     complete_epic_stage(epic, "epic_review_complete", f"Epic reviewer decision: {decision}")
     print(f"[OK] Epic review verified for {epic} ({decision})")
 
-    # Runs last, after epic_review_complete's own status transition, so
-    # adr_distill_prepare's update_epic_stage/complete_epic_stage calls are what
-    # current_stage ends up as (not overwritten back to "epic_review_complete") —
-    # same ordering guarantee as qa_complete -> distill_prepare on the ticket side.
-    # A failure inside adr_distill_prepare must not corrupt the already-committed
-    # review decision (FC-6).
-    if decision == "approve":
-        adr_distill_prepare(epic)
+    # Deliberately NOT auto-calling adr_distill_prepare here (unlike qa_complete's
+    # ticket-side distill_prepare call): epic_next_action (below) already returns
+    # "adr-distill-prepare" as its own distinct step once decision == "approve" and
+    # no ADR-distill prompt exists yet. Calling it synchronously here would advance
+    # current_stage to "adr_distill_prepare" before the router/autoflow ever sees
+    # "adr-distill-prepare" as the next step, so --auto-flow/--run-auto could never
+    # spawn a WezTerm pane for it (AC-5). epic_next_action drives this stage instead.
 
 
 # ── EPIC ADR DISTILL WORKFLOW (write path) ──────────────────────────────────────
-# Epic-level ADR lifecycle, auto-triggered by epic_review_complete on an approved
-# review. Mirrors the ticket-side distill prepare/complete shape (US-005). See
+# Epic-level ADR lifecycle, auto-triggered via epic_next_action's routing once a
+# review is approved (see the "adr-distill-prepare" branch below) rather than
+# synchronously inside epic_review_complete, so --auto-flow/--run-auto still see
+# "adr-distill-prepare" as its own step and spawn a WezTerm pane for it (AC-5).
+# Mirrors the ticket-side distill prepare/complete shape (US-005). See
 # design_note.md "Which ADRs to verify" for why selection is filename-id-based
 # rather than trusting each ADR's own `epic:` field.
 
@@ -2663,9 +2668,20 @@ def _parse_adr_frontmatter(text: str) -> Dict[str, object]:
         return {}
 
     fm: Dict[str, object] = {}
-    for line in lines[1:end]:
-        line = line.split("#", 1)[0].rstrip()
-        if not line.strip() or ":" not in line:
+    pending_list_key: Optional[str] = None
+    for raw_line in lines[1:end]:
+        line = raw_line.split("#", 1)[0].rstrip()
+        if not line.strip():
+            continue
+        # Multi-line YAML list continuation, e.g. `tickets:\n  - US-001`.
+        stripped = line.strip()
+        if pending_list_key is not None and stripped.startswith("- "):
+            item = stripped[2:].strip().strip('"').strip("'")
+            existing = fm.get(pending_list_key)
+            fm[pending_list_key] = (existing if isinstance(existing, list) else []) + [item]
+            continue
+        pending_list_key = None
+        if ":" not in line:
             continue
         key, _, value = line.partition(":")
         key = key.strip()
@@ -2677,6 +2693,11 @@ def _parse_adr_frontmatter(text: str) -> Dict[str, object]:
                 if inner
                 else []
             )
+        elif not value:
+            # Could be a multi-line list continuation on the following lines,
+            # or a genuinely empty scalar field — resolved once we see the next line.
+            fm[key] = []
+            pending_list_key = key
         else:
             fm[key] = value.strip('"').strip("'")
     return fm
@@ -3263,9 +3284,10 @@ def epic_next_action(epic: str) -> str:
 
     # Breakdown after approved review
     if review_decision == "approve":
-        # ADR distill (auto-triggered by epic_review_complete on approve) runs
-        # before breakdown. Guarded on vault_root() so vault-less epics skip
-        # straight to breakdown (FC-1/backward-compat).
+        # ADR distill (this branch is what auto-triggers it once the review is
+        # approved — see the write-path comment above) runs before breakdown.
+        # Guarded on vault_root() so vault-less epics skip straight to breakdown
+        # (FC-1/backward-compat).
         if vault_root() is not None:
             if not adr_distill_prompt_path(epic).exists():
                 return "adr-distill-prepare"

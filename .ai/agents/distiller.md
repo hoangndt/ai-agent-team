@@ -51,8 +51,10 @@ Work must:
   a new shape.
 - **ADR handling (ticket-land, two modes):**
   - *Flip an existing epic-approved decision:* if this ticket has an epic prefix
-    (`EPIC-NNN-...`), scan `proposed`/`accepted` ADRs whose `epic:` matches that
-    prefix. If exactly one plausibly matches the decision this ticket implements,
+    (`EPIC-NNN-...`, lowercased — epic dirs and ADR `epic:` values are lowercase
+    full slugs, e.g. `epic-001-mvp`), scan `proposed`/`accepted` ADRs whose `epic:`
+    value starts with (or equals) that lowercased prefix. If exactly one plausibly
+    matches the decision this ticket implements,
     append this ticket's id to its `tickets:` list, flip `status` from `proposed`
     to `accepted` on the first implementing ticket (leave `accepted` unchanged on
     later tickets), and flip the matching module-doc entry `planned` → `current`.
