@@ -29,6 +29,32 @@ When prompt asks for report file, write concise implementation report:
 3. Key decisions
 4. Assumptions followed
 5. Commands/tests run
+6. `## Architecture Impact` (mandatory, exact heading text)
+
+### `## Architecture Impact` section
+
+State the ticket's architecture delta relative to the current vault
+(`.ai/vault/architecture/system-overview.md` headings), not a generic changelog.
+This feeds the future distill step — keep it structured and terse.
+
+Shape (four bullets, `none` per bullet when that dimension has no delta):
+
+```
+## Architecture Impact
+
+- **Components:** <new/changed/removed components, else "none">
+- **Data flows:** <new/changed flows, else "none">
+- **Invariants/constraints:** <added/changed/removed, else "none">
+- **ADRs:** <decisions worth recording as ADRs, else "none">
+```
+
+If the ticket has zero architecture impact, the whole section body may be the
+single word `none` instead of the four bullets.
+
+This section lives once at report level — fix rounds do not need to restate it
+unless the fix round itself changes the architecture delta, in which case update
+the existing section in place. `dev-complete`/`dev-fix-complete` fail the stage if
+this heading is missing or its body is empty.
 
 Post-implementation steps (always run after writing report):
 

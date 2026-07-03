@@ -1,7 +1,7 @@
 # Epic Story Status — EPIC-001 Living Architecture Doc (Context Vault)
 
 Epic: Repo-internal, machine-maintained architecture doc under `.ai/vault/`, injected token-capped into every agent prompt and kept fresh by the workflow itself.
-Last updated: 2026-07-03 (US-003 done)
+Last updated: 2026-07-03 (US-004 done)
 
 ---
 
@@ -36,7 +36,7 @@ Last updated: 2026-07-03 (US-003 done)
 
 | ID | Title | Status | Branch | Report |
 |----|-------|--------|--------|--------|
-| US-004 | Developer `## Architecture Impact` section + `dev-complete` check | ⬜ | — | — |
+| US-004 | Developer `## Architecture Impact` section + `dev-complete` check | ✅ | `EPIC-001-US-004-dev-architecture-impact-section` | [report](.ai/runs/EPIC-001-US-004-dev-architecture-impact-section/dev/implementation_report.md) |
 | US-005 | Distill stage: distiller role + subcommands + cap enforcement | ⬜ | — | — |
 | US-006 | ADR lifecycle: epic ADR distill + ticket-land flips | ⬜ | — | — |
 
@@ -52,6 +52,6 @@ Last updated: 2026-07-03 (US-003 done)
 
 ## Progress Summary
 
-- Done: 3 / 7
+- Done: 4 / 7
 - In progress: 0 / 7
-- Not started: 4 / 7
+- Not started: 3 / 7
