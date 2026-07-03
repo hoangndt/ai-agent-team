@@ -1,0 +1,93 @@
+{
+  "epic": "epic-001-living-architecture-doc",
+  "domains": [
+    "workflow"
+  ],
+  "current_stage": "epic_breakdown_prepare",
+  "state": "ready",
+  "updated_at": "2026-07-03T09:25:29",
+  "artifacts": {
+    "epic_input": ".ai/epics/epic-001-living-architecture-doc/input/epic_input.md",
+    "epic_analysis_prompt": ".ai/epics/epic-001-living-architecture-doc/analysis/epic_analysis_prompt.md",
+    "epic_analysis": ".ai/epics/epic-001-living-architecture-doc/analysis/epic_analysis.md",
+    "epic_design_prompt": ".ai/epics/epic-001-living-architecture-doc/design/epic_design_prompt.md",
+    "epic_design": ".ai/epics/epic-001-living-architecture-doc/design/epic_design.md",
+    "epic_review_prompt": ".ai/epics/epic-001-living-architecture-doc/review/epic_review_prompt.md",
+    "previous_epic_review": ".ai/epics/epic-001-living-architecture-doc/fix/previous_epic_review.json",
+    "epic_design_fix_prompt": ".ai/epics/epic-001-living-architecture-doc/fix/epic_design_fix_prompt.md",
+    "epic_review_report": ".ai/epics/epic-001-living-architecture-doc/review/epic_review.json",
+    "epic_review_fix_context": ".ai/epics/epic-001-living-architecture-doc/fix/epic_review_fix_context.md",
+    "epic_breakdown_prompt": ".ai/epics/epic-001-living-architecture-doc/breakdown/epic_breakdown_prompt.md"
+  },
+  "history": [
+    {
+      "stage": "init",
+      "status": "done",
+      "time": "2026-07-03T08:33:15"
+    },
+    {
+      "stage": "epic_analysis_prepare",
+      "status": "done",
+      "time": "2026-07-03T08:57:30",
+      "note": "Generated epic analysis prompt."
+    },
+    {
+      "stage": "epic_analysis_complete",
+      "status": "done",
+      "time": "2026-07-03T08:59:36",
+      "note": "Epic analysis verified."
+    },
+    {
+      "stage": "epic_design_prepare",
+      "status": "done",
+      "time": "2026-07-03T08:59:36",
+      "note": "Generated epic design prompt."
+    },
+    {
+      "stage": "epic_design_complete",
+      "status": "done",
+      "time": "2026-07-03T09:03:09",
+      "note": "Epic design verified."
+    },
+    {
+      "stage": "epic_review_prepare",
+      "status": "done",
+      "time": "2026-07-03T09:03:10",
+      "note": "Generated epic review prompt."
+    },
+    {
+      "stage": "epic_design_fix_prepare",
+      "status": "done",
+      "time": "2026-07-03T09:13:14",
+      "note": "Generated epic design fix prompt."
+    },
+    {
+      "stage": "epic_design_fix_complete",
+      "status": "done",
+      "time": "2026-07-03T09:23:37",
+      "note": "Epic design fix verified."
+    },
+    {
+      "stage": "epic_review_prepare",
+      "status": "done",
+      "time": "2026-07-03T09:23:38",
+      "note": "Generated epic review prompt."
+    },
+    {
+      "stage": "epic_review_complete",
+      "status": "done",
+      "time": "2026-07-03T09:25:28",
+      "note": "Epic reviewer decision: approve"
+    },
+    {
+      "stage": "epic_breakdown_prepare",
+      "status": "done",
+      "time": "2026-07-03T09:25:29",
+      "note": "Generated epic breakdown prompt."
+    }
+  ],
+  "runner": {
+    "mode": "file_referenced_prompts",
+    "last_command": "epic-breakdown-prepare"
+  }
+}
