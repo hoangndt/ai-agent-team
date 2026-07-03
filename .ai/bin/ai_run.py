@@ -60,6 +60,7 @@ STEP_MODEL: Dict[str, Tuple[str, str]] = {
     # --- Sonnet, medium effort (targeted / structured) ---
     "dev-fix-prepare":          ("sonnet", "medium"),
     "qa-prepare":               ("sonnet", "medium"),
+    "distill-prepare":          ("sonnet", "medium"),
     "epic-review-prepare":      ("sonnet", "medium"),
     "epic-breakdown-prepare":   ("opus", "medium"),
 }
@@ -72,6 +73,7 @@ KNOWN_SUBCOMMANDS = frozenset({
     "dev-prepare", "dev-complete", "dev-fix-prepare", "dev-fix-complete",
     "review-prepare", "review-complete",
     "qa-prepare", "qa-complete",
+    "distill-prepare", "distill-complete",
     "epic-init", "epic-next", "epic-status",
     "epic-analysis-prepare", "epic-analysis-complete",
     "epic-design-prepare", "epic-design-complete",
@@ -220,6 +222,18 @@ def qa_report_path(ticket: str) -> Path:
     return qa_dir(ticket) / "qa_report.json"
 
 
+def distill_dir(ticket: str) -> Path:
+    return run_path(ticket) / "distill"
+
+
+def distill_prompt_path(ticket: str) -> Path:
+    return distill_dir(ticket) / "distill_prompt.md"
+
+
+def vault_cap_exceeded_path(ticket: str) -> Path:
+    return fix_dir(ticket) / "vault_cap_exceeded.md"
+
+
 def arch_init_dir(ticket: str) -> Path:
     return run_path(ticket) / "arch_init"
 
@@ -346,6 +360,7 @@ def ensure_ticket_dirs(ticket: str) -> None:
         fix_dir(ticket),
         review_dir(ticket),
         qa_dir(ticket),
+        distill_dir(ticket),
     ]:
         path.mkdir(parents=True, exist_ok=True)
 
@@ -755,6 +770,28 @@ def vault_root() -> Optional[Path]:
     return root if root.is_dir() else None
 
 
+def next_adr_id() -> str:
+    """Next free ADR id, zero-padded to 3 digits; "001" on an empty/missing decisions dir.
+
+    `ADR-NNN-template.md` is skipped naturally: "NNN" isn't 3 digits, so the regex
+    below doesn't match it.
+    """
+    root = vault_root()
+    if not root:
+        return "001"
+    decisions_dir = root / "architecture" / "decisions"
+    if not decisions_dir.is_dir():
+        return "001"
+    max_n = 0
+    for path in decisions_dir.iterdir():
+        if not path.is_file():
+            continue
+        match = re.match(r"^ADR-(\d{3})", path.name)
+        if match:
+            max_n = max(max_n, int(match.group(1)))
+    return f"{max_n + 1:03d}"
+
+
 def read_vault_overview() -> str:
     root = vault_root()
     if not root:
@@ -768,7 +805,8 @@ def read_vault_overview() -> str:
 def read_vault_modules(domains: List[str], role: str) -> str:
     cfg = load_project_config().get("vault", {})
     inject_roles = cfg.get(
-        "inject_modules_for", ["architect", "developer", "epic_analyst", "epic_designer"]
+        "inject_modules_for",
+        ["architect", "developer", "epic_analyst", "epic_designer", "distiller"],
     )
     if role not in inject_roles:
         return ""
@@ -827,9 +865,14 @@ def build_role_prompt(ticket: str, role: str, task_instruction: str) -> str:
         "reviewer": "reviewer.md",
         "qa": "qa.md",
         "arch_init": "arch_init.md",
+        "distiller": "distiller.md",
     }
-    # architect_reviewer and arch_init reuse the same domain skills as architect (per A-7, A9)
-    skills_role = "architect" if role in ("architect_reviewer", "arch_init") else role
+    # architect_reviewer, arch_init, and distiller reuse the same domain skills as
+    # architect (per A-7, A9, A8) — omitting a role from this alias set silently
+    # resolves to an empty skill list instead of the intended reuse.
+    skills_role = (
+        "architect" if role in ("architect_reviewer", "arch_init", "distiller") else role
+    )
     role_prompt = require_agent_file(role_file_map[role])
     project_context = build_project_context(ticket)
     skill_content = load_skill_contents(get_effective_role_skills(ticket, skills_role))
@@ -1867,6 +1910,279 @@ def qa_complete(ticket: str) -> None:
     complete_stage(ticket, "qa_complete", f"QA decision: {decision}")
     print(f"[OK] QA file verified for {ticket} ({decision})")
 
+    # Runs last, after qa_complete's own status transition, so distill_prepare's
+    # update_stage/complete_stage calls are what current_stage ends up as (not
+    # overwritten back to "qa_complete"). A distill_prepare failure must not corrupt
+    # QA state — same ordering guarantee as build_qa_fix_context above.
+    if decision == "pass":
+        distill_prepare(ticket)
+
+
+# ── DISTILL WORKFLOW (write path) ───────────────────────────────────────────────
+# Ticket-land vault refresh, auto-triggered by qa_complete on QA pass. Mirrors the
+# prepare/complete shape of every other stage. See design_note.md "Cap Enforcement
+# & Retry State (D5)" for the one-shared-retry-round rules enforced in
+# distill_complete.
+
+def _extract_architecture_impact(ticket: str) -> str:
+    """Slice the '## Architecture Impact' section out of implementation_report.md.
+
+    Falls back to embedding the whole report (with a note) if the heading is
+    absent — e.g. an older ticket that predates US-004.
+    """
+    report = read(implementation_report_path(ticket))
+    lines = report.splitlines()
+    heading_re = re.compile(r"^## Architecture Impact\s*$")
+    next_heading_re = re.compile(r"^#{1,2}\s")
+
+    start = None
+    for i, line in enumerate(lines):
+        if heading_re.match(line):
+            start = i + 1
+            break
+
+    if start is None:
+        return (
+            "(No '## Architecture Impact' heading found in implementation_report.md; "
+            "falling back to the full report below.)\n\n" + report.strip()
+        )
+
+    end = len(lines)
+    for j in range(start, len(lines)):
+        if next_heading_re.match(lines[j]):
+            end = j
+            break
+
+    body = "\n".join(lines[start:end]).strip()
+    return body if body else "(Architecture Impact section present but empty.)"
+
+
+def _distill_retry_state(ticket: str) -> Tuple[int, List[str]]:
+    s = load_status(ticket)
+    return s.get("distill_retry", 0), list(s.get("distill_overcap_files", []))
+
+
+def _set_distill_retry_state(ticket: str, retry: int, overcap_files: List[str]) -> None:
+    s = load_status(ticket)
+    s["distill_retry"] = retry
+    if overcap_files:
+        s["distill_overcap_files"] = overcap_files
+    else:
+        s.pop("distill_overcap_files", None)
+    s["updated_at"] = now()
+    save_status(ticket, s)
+
+
+def _stage_completed_in_history(ticket: str, stage: str) -> bool:
+    history = load_status(ticket).get("history", [])
+    return any(h.get("stage") == stage and h.get("status") == "done" for h in history)
+
+
+def _largest_sections(text: str, top_n: int = 3) -> List[Tuple[str, int]]:
+    """Top-N sections by line span between consecutive ##/### headings."""
+    lines = text.splitlines()
+    heading_re = re.compile(r"^(#{2,3})\s+(.*)$")
+    sections: List[Tuple[str, int]] = []
+    current_title: Optional[str] = None
+    current_start = 0
+    for i, line in enumerate(lines):
+        if heading_re.match(line):
+            if current_title is not None:
+                sections.append((current_title, i - current_start))
+            current_title = heading_re.match(line).group(2).strip()
+            current_start = i
+    if current_title is not None:
+        sections.append((current_title, len(lines) - current_start))
+    sections.sort(key=lambda item: item[1], reverse=True)
+    return sections[:top_n]
+
+
+def _write_vault_cap_exceeded(
+    ticket: str, overview_path: Path, overview_lines: int, overview_cap: int
+) -> None:
+    overage = overview_lines - overview_cap
+    sections = _largest_sections(read(overview_path))
+    lines = [
+        "# Vault Cap Exceeded",
+        "",
+        f"File: {overview_path.as_posix()}",
+        f"Cap: {overview_cap} lines",
+        f"Actual: {overview_lines} lines",
+        f"Overage: {overage} lines",
+        "",
+        "## Largest Sections",
+    ]
+    if sections:
+        for title, span in sections:
+            lines.append(f"- {title} ({span} lines)")
+    else:
+        lines.append("- (no ##/### sections found)")
+    lines.extend(
+        [
+            "",
+            "## Next Steps",
+            "Trim system-overview.md under the cap (or raise `overview_cap_lines` in "
+            "project_config.json, an explicit opt-in), then re-run `distill-complete`.",
+        ]
+    )
+    path = vault_cap_exceeded_path(ticket)
+    write(path, "\n".join(lines) + "\n")
+    set_artifact(ticket, "vault_cap_exceeded", path)
+
+
+def distill_prepare(ticket: str) -> None:
+    root = vault_root()
+    if root is None:
+        # Vault-disabled contract (AC-13): no-op without mutating current_stage or
+        # artifacts, so next_action's rule 0 is the only thing that resolves this
+        # ticket to "done" — never an incidental fallback through rules 1-4.
+        print(f"[SKIP] Vault disabled; distill_prepare no-op for {ticket}")
+        return
+
+    update_stage(ticket, "distill_prepare")
+    set_runner(ticket, "distill-prepare")
+
+    domain = get_ticket_domain(ticket)
+    adr_id = f"ADR-{next_adr_id()}"
+    impact_block = _extract_architecture_impact(ticket)
+
+    retry, overcap_files = _distill_retry_state(ticket)
+    cfg = load_project_config().get("vault", {})
+    overview_cap = cfg.get("overview_cap_lines", 200)
+    module_cap = cfg.get("module_cap_lines", 400)
+
+    compress_block = ""
+    if retry >= 1 and overcap_files:
+        named = []
+        if "overview" in overcap_files:
+            named.append(f"`system-overview.md` (cap {overview_cap} lines)")
+        if "module" in overcap_files:
+            named.append(f"`modules/{domain}.md` (cap {module_cap} lines)")
+        compress_block = f"""
+
+## Compress Instruction (retry round)
+
+{" and ".join(named)} exceeded its line cap on the previous distill pass. Compress it:
+write a map, not an encyclopedia — drop prose, merge redundant rows, prune stale
+`planned` entries, tighten wording. Do not drop required headings or structure.
+"""
+
+    overview_target = root / "architecture" / "system-overview.md"
+    module_target = root / "architecture" / "modules" / f"{domain}.md"
+
+    task_instruction = f"""Work inside the current repository.
+
+Refresh the architecture vault to reflect this ticket's changes. The current
+(capped) system-overview.md and modules/{domain}.md are injected above under
+"Architecture (Vault)".
+
+Read these files:
+{file_ref_list([design_note_path(ticket), implementation_report_path(ticket)])}
+
+Developer-reported Architecture Impact (from implementation_report.md):
+
+{impact_block}
+
+Next free ADR id for this ticket: {adr_id}
+{compress_block}
+Rewrite these files directly:
+- {overview_target.as_posix()}
+- {module_target.as_posix()}
+
+Rules:
+- Keep system-overview.md's fixed headings and order exactly: `## Components`,
+  `## Data Flows`, `## Invariants / Constraints`, `## ADR Index`.
+- Only update what this ticket's Architecture Impact actually changed — this is a
+  map, not an encyclopedia. Prune stale `planned` entries this ticket superseded.
+- If the Architecture Impact warrants recording a decision, use {adr_id} for its
+  id — append or flip `tickets:` in the corresponding file under
+  `.ai/vault/architecture/decisions/`. Do not invent a different id.
+- If the Architecture Impact has no delta for a dimension, leave it unchanged.
+- Do not run git add/commit/push — leave all edits as working-tree changes.
+
+Important:
+- Write the updated files directly. Do not reply in chat with the final content.
+"""
+    prompt = build_role_prompt(ticket, "distiller", task_instruction)
+    write(distill_prompt_path(ticket), prompt)
+    set_artifact(ticket, "distill_prompt", distill_prompt_path(ticket))
+    complete_stage(ticket, "distill_prepare", "Generated distill prompt.")
+    print(f"[OK] Wrote {distill_prompt_path(ticket)}")
+    print(
+        "[NEXT] Paste this prompt into Claude/Copilot. Let it rewrite the vault files, then run next --run."
+    )
+
+
+def distill_complete(ticket: str) -> None:
+    update_stage(ticket, "distill_complete")
+    set_runner(ticket, "distill-complete")
+
+    root = vault_root()
+    if root is None:
+        # Defensive only — next_action's rule 0 keeps a vault-disabled ticket from
+        # ever reaching this step, but a manual CLI invocation shouldn't crash.
+        complete_stage(ticket, "distill_complete", "Vault disabled; nothing to verify.")
+        print(f"[OK] Vault disabled; distill_complete no-op for {ticket}")
+        return
+
+    cfg = load_project_config().get("vault", {})
+    overview_cap = cfg.get("overview_cap_lines", 200)
+    module_cap = cfg.get("module_cap_lines", 400)
+
+    domain = get_ticket_domain(ticket)
+    overview_path = root / "architecture" / "system-overview.md"
+    module_path = root / "architecture" / "modules" / f"{domain}.md"
+
+    ensure_non_empty_files([overview_path, module_path], "distill_complete", ticket)
+
+    overview_lines = len(read(overview_path).splitlines())
+    module_lines = len(read(module_path).splitlines())
+    overview_over = overview_lines > overview_cap
+    module_over = module_lines > module_cap
+
+    retry, _ = _distill_retry_state(ticket)
+
+    if retry == 0 and (overview_over or module_over):
+        overcap_files = []
+        if overview_over:
+            overcap_files.append("overview")
+        if module_over:
+            overcap_files.append("module")
+        _set_distill_retry_state(ticket, 1, overcap_files)
+        distill_prepare(ticket)
+        print(
+            f"[RETRY] Vault cap exceeded ({', '.join(overcap_files)}); re-ran "
+            f"distill-prepare with a compress instruction for {ticket}. Paste the new "
+            "prompt, then run distill-complete again."
+        )
+        return
+
+    if module_over:
+        print(
+            f"[WARN] modules/{domain}.md is {module_lines} lines (cap {module_cap}); "
+            "proceeding anyway after one retry round."
+        )
+
+    if overview_over:
+        _write_vault_cap_exceeded(ticket, overview_path, overview_lines, overview_cap)
+        fail_stage(
+            ticket,
+            "distill_complete",
+            f"system-overview.md exceeds overview_cap_lines after retry "
+            f"({overview_lines} > {overview_cap} lines)",
+        )
+        print(
+            f"[BLOCK] system-overview.md still exceeds cap after retry; see "
+            f"{vault_cap_exceeded_path(ticket)}. Trim it (or raise overview_cap_lines) "
+            "and re-run distill-complete."
+        )
+        return
+
+    vault_cap_exceeded_path(ticket).unlink(missing_ok=True)
+    _set_distill_retry_state(ticket, 0, [])
+    complete_stage(ticket, "distill_complete", "Vault caps verified.")
+    print(f"[OK] Distill verified for {ticket}")
+
 
 # ── ARCH-INIT WORKFLOW ─────────────────────────────────────────────────────────
 # Project-level, ticket-less bootstrap: seeds project_config.json domains (if
@@ -2872,7 +3188,31 @@ def next_action(ticket: str) -> str:
             return "qa-complete"
 
         if outcome["qa"] == "pass":
-            return "done"
+            # Rule 0 (explicit, evaluated first): a vault-disabled project must reach
+            # "done" deterministically, not via an incidental fallback through rules
+            # 1-4 below — distill_prepare's no-op path leaves current_stage untouched,
+            # so nothing else here could reliably distinguish "disabled" from "not yet
+            # started" without this check running first. See design_note "Router
+            # Changes" / assumptions.md A11.
+            if vault_root() is None:
+                return "done"
+
+            # Rule 1: prompt just built, waiting on distill-complete.
+            if current_stage == "distill_prepare":
+                return "distill-complete"
+
+            # Rule 2: parked on the overview terminal block until a human trims it.
+            if vault_cap_exceeded_path(ticket).exists() and not _stage_completed_in_history(
+                ticket, "distill_complete"
+            ):
+                return "distill-complete"
+
+            # Rule 3: distill already completed (pass or warn-and-proceed).
+            if _stage_completed_in_history(ticket, "distill_complete"):
+                return "done"
+
+            # Rule 4: fallback — distill prompt not yet built.
+            return "distill-prepare"
 
         if outcome["qa"] is None:
             return "qa-complete"
@@ -2896,6 +3236,8 @@ def run_named_step(ticket: str, step: str) -> None:
         "review-complete": review_complete,
         "qa-prepare": qa_prepare,
         "qa-complete": qa_complete,
+        "distill-prepare": distill_prepare,
+        "distill-complete": distill_complete,
     }
     if step == "done":
         print("Ticket looks ready. Review and merge manually.")
@@ -2913,6 +3255,7 @@ _PREPARE_STEP_PROMPT: Dict[str, object] = {
     "dev-fix-prepare": dev_fix_prompt_path,
     "review-prepare": review_prompt_path,
     "qa-prepare": qa_prompt_path,
+    "distill-prepare": distill_prompt_path,
 }
 
 _PREPARE_TO_COMPLETE: Dict[str, str] = {
@@ -2923,6 +3266,7 @@ _PREPARE_TO_COMPLETE: Dict[str, str] = {
     "dev-fix-prepare":          "dev-fix-complete",
     "review-prepare":           "review-complete",
     "qa-prepare":               "qa-complete",
+    "distill-prepare":          "distill-complete",
 }
 
 _EPIC_PREPARE_TO_COMPLETE: Dict[str, str] = {
@@ -3282,6 +3626,8 @@ def build_parser() -> argparse.ArgumentParser:
         "review-complete",
         "qa-prepare",
         "qa-complete",
+        "distill-prepare",
+        "distill-complete",
         "status",
     ]:
         p = sub.add_parser(cmd, help=f"Run {cmd}")
@@ -3496,6 +3842,10 @@ def main() -> int:
             qa_prepare(args.ticket)
         elif args.command == "qa-complete":
             qa_complete(args.ticket)
+        elif args.command == "distill-prepare":
+            distill_prepare(args.ticket)
+        elif args.command == "distill-complete":
+            distill_complete(args.ticket)
         elif args.command == "status":
             show_status(args.ticket)
         elif args.command == "arch-init-prepare":

@@ -16,7 +16,7 @@
     "path": ".ai/vault",
     "overview_cap_lines": 200,
     "module_cap_lines": 400,
-    "inject_modules_for": ["architect", "developer", "epic_analyst", "epic_designer"]
+    "inject_modules_for": ["architect", "developer", "epic_analyst", "epic_designer", "distiller"]
   },
   "domains": {
     "workflow": {
