@@ -1,7 +1,7 @@
 # Epic Story Status — EPIC-001 Living Architecture Doc (Context Vault)
 
 Epic: Repo-internal, machine-maintained architecture doc under `.ai/vault/`, injected token-capped into every agent prompt and kept fresh by the workflow itself.
-Last updated: 2026-07-03 (US-006 done)
+Last updated: 2026-07-03 (US-007 done)
 
 ---
 
@@ -46,12 +46,12 @@ Last updated: 2026-07-03 (US-006 done)
 
 | ID | Title | Status | Branch | Report |
 |----|-------|--------|--------|--------|
-| US-007 | `arch-refresh` drift-check command | ⬜ | — | — |
+| US-007 | `arch-refresh` drift-check command | ✅ | `EPIC-001-US-007-arch-refresh-drift-check` | [report](.ai/runs/EPIC-001-US-007-arch-refresh-drift-check/dev/implementation_report.md) |
 
 ---
 
 ## Progress Summary
 
-- Done: 6 / 7
+- Done: 7 / 7
 - In progress: 0 / 7
-- Not started: 1 / 7
+- Not started: 0 / 7

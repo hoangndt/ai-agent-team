@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import hashlib
 import json
 import re
 import subprocess
@@ -85,6 +86,7 @@ KNOWN_SUBCOMMANDS = frozenset({
     "epic-generate-tickets",
     "ticket", "epic",
     "arch-init-prepare", "arch-init-complete",
+    "arch-refresh-prepare", "arch-refresh-complete",
 })
 
 # Sentinel ticket id reused for arch-init's per-run status/prompt machinery.
@@ -94,6 +96,10 @@ KNOWN_SUBCOMMANDS = frozenset({
 # design_note.md "Status & context resolution" for why a fixed sentinel id is
 # used instead of forking ticket-less variants of those helpers.
 ARCH_INIT_TICKET = "_arch-init"
+
+# Separate sentinel for arch-refresh (US-007), so the two ticket-less operator
+# commands never share/clobber the same status.json.
+ARCH_REFRESH_TICKET = "_arch-refresh"
 
 
 def now() -> str:
@@ -242,6 +248,14 @@ def arch_init_dir(ticket: str) -> Path:
 
 def arch_init_prompt_path(ticket: str) -> Path:
     return arch_init_dir(ticket) / "arch_init_prompt.md"
+
+
+def arch_refresh_dir(ticket: str) -> Path:
+    return run_path(ticket) / "arch_refresh"
+
+
+def arch_refresh_prompt_path(ticket: str) -> Path:
+    return arch_refresh_dir(ticket) / "arch_refresh_prompt.md"
 
 
 # ── EPIC PATH HELPERS ──────────────────────────────────────────────────────────
@@ -597,6 +611,20 @@ def ensure_arch_init_status() -> None:
     run_path(ARCH_INIT_TICKET).mkdir(parents=True, exist_ok=True)
     default_domain = load_project_config().get("default_domain", "backend")
     save_status(ARCH_INIT_TICKET, init_status(ARCH_INIT_TICKET, default_domain))
+
+
+def ensure_arch_refresh_status() -> None:
+    """Create the sentinel run's status.json on first use; no-op on re-run.
+
+    Mirrors ensure_arch_init_status() with a distinct sentinel id so the two
+    ticket-less operator commands don't share/clobber the same status.json.
+    """
+    if status_file(ARCH_REFRESH_TICKET).exists():
+        return
+    ensure_base_dirs()
+    run_path(ARCH_REFRESH_TICKET).mkdir(parents=True, exist_ok=True)
+    default_domain = load_project_config().get("default_domain", "backend")
+    save_status(ARCH_REFRESH_TICKET, init_status(ARCH_REFRESH_TICKET, default_domain))
 
 
 def require_agent_file(name: str) -> str:
@@ -2398,6 +2426,139 @@ def arch_init_complete() -> None:
     print("[REVIEW] Run `git diff` to review every arch-init edit before committing — nothing was auto-committed.")
 
 
+# ── ARCH-REFRESH WORKFLOW ───────────────────────────────────────────────────────
+# Project-level, ticket-less drift check (US-007): an agent re-derives the
+# system overview from the current codebase, diffs it against the committed
+# system-overview.md, and writes a report — it never edits system-overview.md
+# itself. A sha256 baseline captured at prepare and re-checked at complete
+# turns "overview unchanged" into an enforced guarantee rather than a trust-based
+# instruction. See design_note.md "Baseline capture" for the rationale.
+
+def _sha256_of(path: Path) -> str:
+    return hashlib.sha256(read(path).encode("utf-8")).hexdigest()
+
+
+def _set_overview_baseline(ticket: str, sha: str) -> None:
+    s = load_status(ticket)
+    s.setdefault("artifacts", {})["overview_baseline_sha"] = sha
+    s["updated_at"] = now()
+    save_status(ticket, s)
+
+
+def _get_overview_baseline(ticket: str) -> Optional[str]:
+    s = load_status(ticket)
+    return s.get("artifacts", {}).get("overview_baseline_sha")
+
+
+def arch_refresh_prepare() -> None:
+    ticket = ARCH_REFRESH_TICKET
+    ensure_arch_refresh_status()
+
+    root = vault_root()
+    if root is None:
+        msg = (
+            "Vault missing or disabled (vault.enabled=false or .ai/vault absent). "
+            "Run the US-001 vault skeleton setup first, then re-run arch-refresh."
+        )
+        fail_stage(ticket, "arch_refresh_prepare", msg)
+        print(f"[ERROR] {msg}", file=sys.stderr)
+        sys.exit(1)
+
+    update_stage(ticket, "arch_refresh_prepare")
+    set_runner(ticket, "arch-refresh-prepare")
+
+    overview_path = root / "architecture" / "system-overview.md"
+    drift_report_path = root / "architecture" / "_drift_report.md"
+
+    _set_overview_baseline(ticket, _sha256_of(overview_path))
+
+    task_instruction = f"""Work inside the current repository. This is a project-level drift
+check with no ticket id — do not create or touch any `.ai/runs/<TICKET>/` directory other than
+`{arch_refresh_dir(ticket).as_posix()}`.
+
+## Step 1 — re-derive the overview (blind sweep)
+
+Sweep the codebase (components, entry points, data flows, invariants/constraints) and mentally
+re-derive what `{overview_path.as_posix()}` *should* say, **without reading the current file
+first** — this avoids anchoring on its existing wording.
+
+## Step 2 — read the current overview
+
+Now read `{overview_path.as_posix()}`.
+
+## Step 3 — diff and classify
+
+Compare your re-derivation against the current file. Classify every divergence into exactly
+these categories:
+
+- **Missing components** — present in code but absent from the overview.
+- **Stale entries** — present in the overview but no longer true / removed from code.
+- **Wrong links** — module-doc or entry-point references that are broken or point elsewhere.
+
+## Step 4 — write the drift report
+
+Write `{drift_report_path.as_posix()}`, overwriting any prior report, with one section per
+category above. If a category has no findings, state that explicitly (e.g. "none") — do not
+omit the section.
+
+## Rules
+
+- Do **not** modify `{overview_path.as_posix()}` or any other vault file — this is a report-only
+  check; humans apply changes manually.
+- Do not run `git add`/`git commit`/`git push`.
+- Do not reply in chat with the report contents — write it directly to the path above.
+"""
+    prompt = build_role_prompt(ticket, "arch_init", task_instruction)
+    write(arch_refresh_prompt_path(ticket), prompt)
+    set_artifact(ticket, "arch_refresh_prompt", arch_refresh_prompt_path(ticket))
+    complete_stage(ticket, "arch_refresh_prepare", "Generated arch-refresh prompt.")
+    print(f"[OK] Wrote {arch_refresh_prompt_path(ticket)}")
+    print(
+        "[NEXT] Paste this prompt into Claude/Copilot. Let it sweep the code, diff against "
+        "the current overview, and write the drift report, then run arch-refresh-complete."
+    )
+
+
+def arch_refresh_complete() -> None:
+    ticket = ARCH_REFRESH_TICKET
+    if not status_file(ticket).exists():
+        msg = (
+            "No arch-refresh run found (missing .ai/runs/_arch-refresh/status.json). "
+            "Run arch-refresh-prepare first."
+        )
+        print(f"[ERROR] {msg}", file=sys.stderr)
+        raise FileNotFoundError(msg)
+    update_stage(ticket, "arch_refresh_complete")
+    set_runner(ticket, "arch-refresh-complete")
+
+    root = vault_root()
+    if root is None:
+        msg = "Vault missing or disabled — cannot verify arch-refresh outputs."
+        fail_stage(ticket, "arch_refresh_complete", msg)
+        raise FileNotFoundError(msg)
+
+    overview_path = root / "architecture" / "system-overview.md"
+    drift_report_path = root / "architecture" / "_drift_report.md"
+
+    ensure_non_empty_files([drift_report_path], "arch_refresh_complete", ticket)
+
+    baseline = _get_overview_baseline(ticket)
+    current_sha = _sha256_of(overview_path)
+    if baseline is None or current_sha != baseline:
+        msg = (
+            f"{overview_path.as_posix()} was modified during arch-refresh — it must stay "
+            f"byte-for-byte unchanged. Restore it (e.g. `git checkout -- "
+            f"{overview_path.as_posix()}`) and re-run arch-refresh."
+        )
+        fail_stage(ticket, "arch_refresh_complete", msg)
+        raise ValueError(msg)
+
+    set_artifact(ticket, "drift_report", drift_report_path)
+    complete_stage(ticket, "arch_refresh_complete", "Drift report verified; overview unchanged.")
+    print(f"[OK] arch-refresh drift report written to {drift_report_path.as_posix()}")
+    print("[REVIEW] Review the report and apply changes to system-overview.md manually.")
+
+
 # ── EPIC WORKFLOW ──────────────────────────────────────────────────────────────
 
 def epic_init(epic: str, requirement: str, domains: str = "") -> None:
@@ -3935,6 +4096,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Verify arch-init outputs (vault files + CLAUDE.md import line). Takes no ticket id.",
     )
 
+    sub.add_parser(
+        "arch-refresh-prepare",
+        help="Project-level: generate the arch-refresh prompt to re-derive system-overview.md "
+        "from the code and diff it for drift. Takes no ticket id.",
+    )
+    sub.add_parser(
+        "arch-refresh-complete",
+        help="Verify the drift report was written and system-overview.md is unchanged. "
+        "Takes no ticket id.",
+    )
+
     p_next = sub.add_parser("next", help="Show or run the next step.")
     p_next.add_argument("ticket", help="Ticket ID, e.g. TICKET-123")
     p_next.add_argument(
@@ -4146,6 +4318,10 @@ def main() -> int:
             arch_init_prepare()
         elif args.command == "arch-init-complete":
             arch_init_complete()
+        elif args.command == "arch-refresh-prepare":
+            arch_refresh_prepare()
+        elif args.command == "arch-refresh-complete":
+            arch_refresh_complete()
         elif args.command == "next":
             engine = resolve_engine(args.engine)
             next_step(args.ticket, execute=args.run, run_auto=args.run_auto, engine=engine)
