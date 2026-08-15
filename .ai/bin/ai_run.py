@@ -49,8 +49,8 @@ ENGINE_REGISTRY: Dict[str, Dict] = {
 _DEFAULT_STEP_MODEL = ("sonnet", "high")
 STEP_MODEL: Dict[str, Tuple[str, str]] = {
     # --- Opus, high effort (design brains) ---
-    "architect-prepare":        ("opus", "high"),
-    "architect-fix-prepare":    ("sonnet", "high"),
+    "architect-prepare":        ("sonnet", "high"),
+    "architect-fix-prepare":    ("sonnet", "medium"),
     "epic-analysis-prepare":    ("opus", "high"),
     "epic-design-prepare":      ("opus", "high"),
     "epic-design-fix-prepare":  ("sonnet", "high"),
@@ -63,7 +63,7 @@ STEP_MODEL: Dict[str, Tuple[str, str]] = {
     "qa-prepare":               ("sonnet", "medium"),
     "distill-prepare":          ("sonnet", "medium"),
     "epic-review-prepare":      ("sonnet", "medium"),
-    "epic-breakdown-prepare":   ("opus", "medium"),
+    "epic-breakdown-prepare":   ("sonnet", "high"),
     "adr-distill-prepare":      ("sonnet", "medium"),
 }
 
