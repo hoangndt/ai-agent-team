@@ -1954,12 +1954,13 @@ def qa_complete(ticket: str) -> None:
     complete_stage(ticket, "qa_complete", f"QA decision: {decision}")
     print(f"[OK] QA file verified for {ticket} ({decision})")
 
-    # Runs last, after qa_complete's own status transition, so distill_prepare's
-    # update_stage/complete_stage calls are what current_stage ends up as (not
-    # overwritten back to "qa_complete"). A distill_prepare failure must not corrupt
-    # QA state — same ordering guarantee as build_qa_fix_context above.
-    if decision == "pass":
-        distill_prepare(ticket)
+    # Deliberately NOT auto-calling distill_prepare here: next_action (Rule 4 in
+    # its QA-pass branch) already returns "distill-prepare" as its own distinct
+    # step once decision == "pass" and no distill prompt exists yet. Calling it
+    # synchronously here would advance current_stage to "distill_prepare" before
+    # the router/autoflow ever sees "distill-prepare" as the next step, so
+    # --auto-flow/--run-auto could never spawn a WezTerm pane for it. Mirrors the
+    # epic-side fix for adr_distill_prepare in epic_review_complete (AC-5).
 
 
 # ── DISTILL WORKFLOW (write path) ───────────────────────────────────────────────
