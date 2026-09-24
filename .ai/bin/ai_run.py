@@ -3787,7 +3787,7 @@ def spawn_ai_wezterm(
     if sentinel_instruction:
         prompt_text = prompt_text + "\n\n" + sentinel_instruction
     subprocess.run(
-        ["wezterm", "cli", "send-text", "--pane-id", pane_id, "--no-paste"],
+        ["wezterm", "cli", "send-text", "--pane-id", pane_id],
         input=prompt_text,
         text=True,
     )
