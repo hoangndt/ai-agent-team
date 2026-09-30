@@ -37,6 +37,16 @@ Decision guidance:
 - request_changes: meaningful gaps, fixable within current approach
 - block: severe flaws, dangerous regressions, or fundamentally misaligned
 
+Comment check (scan every file in changed_files.txt in full, not only the added lines in git_diff.patch, so pre-existing comments in touched files are covered):
+
+- Flag comments that reference ticket/epic/story/tracker IDs, workflow artifact labels (AC/A/U/D numbers, `assumptions.md`, `design_note.md`), review/fix rounds, or narrate the change ("now", "previously", "widened vs.")
+- Flag comments that restate obvious code or annotate nearly every step/block
+- Ticket-specific rationale belongs in `implementation_report.md`, not in code
+- Report as one `medium` issue per file (quote a representative comment, say whether it is new or pre-existing); do not list every occurrence
+- Any such issue means decision must be `request_changes`, even if everything else is clean
+- Skip files that are not code/config/workflow source (e.g. generated files, lockfiles, `.ai/` artifacts)
+- Only comments are in scope: never request behavior changes because of this check
+
 Rules:
 
 - Be strict and concrete
