@@ -317,7 +317,56 @@ Tip: use a feature branch per ticket. Runner leaves everything uncommitted, so c
 
 ---
 
-## 8. Troubleshooting
+## 8. Change the Claude model per step
+
+In auto modes (`--auto`, `--auto-flow`, `--run-auto`) the runner launches Claude as
+`claude --dangerously-skip-permissions --model <model> --effort <effort>`, picking the model and effort **per step**. Defaults live in `.ai/bin/ai_run.py`:
+
+```python
+_DEFAULT_STEP_MODEL = ("sonnet", "high")      # fallback for unlisted steps
+STEP_MODEL = {
+    "architect-prepare":        ("sonnet", "high"),
+    "architect-fix-prepare":    ("sonnet", "medium"),
+    "epic-analysis-prepare":    ("opus",   "high"),
+    "epic-design-prepare":      ("opus",   "high"),
+    "epic-design-fix-prepare":  ("sonnet", "high"),
+    "architect-review-prepare": ("sonnet", "high"),
+    "dev-prepare":              ("sonnet", "high"),
+    "review-prepare":           ("sonnet", "high"),
+    "dev-fix-prepare":          ("sonnet", "medium"),
+    "qa-prepare":               ("sonnet", "medium"),
+    "distill-prepare":          ("sonnet", "medium"),
+    "epic-review-prepare":      ("sonnet", "medium"),
+    "epic-breakdown-prepare":   ("sonnet", "high"),
+    "adr-distill-prepare":      ("sonnet", "medium"),
+}
+```
+
+Each key is a `*-prepare` step name, each value is `(model, effort)`. Rationale of the defaults: Opus only for deep design reasoning (epic analysis/design), Sonnet elsewhere to save tokens, effort tuned per step.
+
+### To change it
+
+1. Open `.ai/bin/ai_run.py`, find `STEP_MODEL` (near the top, ~line 50).
+2. Edit the tuple for the step, e.g. run the developer on Opus:
+   ```python
+   "dev-prepare": ("opus", "high"),
+   ```
+3. Or change the fallback for every unlisted step via `_DEFAULT_STEP_MODEL`.
+4. Next auto run prints `[AUTO] Step 'dev-prepare' -> model=opus, effort=high` so you can confirm.
+
+Valid values: `--model` accepts aliases (`sonnet`, `opus`, `haiku`) or full model IDs (check `claude --help` for your version). `--effort` accepts the levels your Claude Code version supports (`low`, `medium`, `high`, ...; verify with `claude --help`). A bad value fails when Claude launches, not in Python.
+
+### Gotchas
+
+- **Re-install overwrites it.** `.ai/bin/` is a managed dir. `install.py` / `--sync-all` replaces `ai_run.py`, so a per-project edit is lost on upgrade. To make a change stick everywhere: edit `STEP_MODEL` in **this template repo** (`.ai/bin/ai_run.py`), then run `python3 install.py --sync-all`. For a one-project override, use `--backup` on upgrade and re-apply the edit.
+- **Auto modes only.** Manual flow (paste prompt into your own Claude session) uses whatever model that session runs. Switch with `/model` inside Claude Code.
+- **Claude engine only.** `--engine codex` ignores `STEP_MODEL` (no model/effort flags are passed).
+- **Only `*-prepare` steps** spawn an agent, so only those keys matter. `*-complete` steps never open a pane.
+- Not configurable from `project_config.json` today; the table is hardcoded.
+
+---
+
+## 9. Troubleshooting
 
 | Symptom | Fix |
 |---|---|
@@ -333,7 +382,7 @@ Tip: use a feature branch per ticket. Runner leaves everything uncommitted, so c
 
 ---
 
-## 9. Quick command reference
+## 10. Quick command reference
 
 ```text
 # install (template repo root)
