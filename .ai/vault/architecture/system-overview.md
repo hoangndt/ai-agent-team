@@ -12,6 +12,8 @@ Fixed headings below (Components, Data Flows, Invariants / Constraints, ADR Inde
 | Domain Skills | Skill files injected into role prompts, keyed by domain + role | `.ai/skills/<domain>/<skill>/SKILL.md` | modules/workflow.md |
 | Architecture Vault | Living architecture docs (system overview, per-domain modules, ADRs) injected into architect/developer/epic prompts as context | `.ai/vault/` | modules/workflow.md |
 | Run State | Per-ticket and per-epic working directories holding prompts, reports, and JSON review/QA outputs | `.ai/runs/<TICKET>/`, `.ai/epics/<EPIC>/` | modules/workflow.md |
+| Claude Wrapper | Optional Claude Code orchestration layer: slash commands drive a ticket/epic loop, one fresh sub-agent per stage; `install.py` ships it via explicit `CLAUDE_MANAGED_FILES` | `.claude/commands/*.md`, `.claude/agents/workflow-step*.md` | modules/workflow.md |
+| Workflow Sidecar | Read-only routing helper: emits next-step JSON (step, kind, prompt path, model/effort, status echo) via `ai_run.next_action`/`epic_next_action`; `validate-id` | `.ai/bin/ai_wrap.py` | modules/workflow.md |
 | WezTerm Bridge | Spawns a WezTerm pane and launches an AI engine (Claude/Codex) to auto-paste generated prompts and poll for a completion sentinel | `spawn_ai_wezterm`, `wait_for_sentinel` in `.ai/bin/ai_run.py` | modules/workflow.md |
 
 ## Data Flows
@@ -20,6 +22,7 @@ Fixed headings below (Components, Data Flows, Invariants / Constraints, ADR Inde
 2. Epic workflow: `epic-init` → Epic Analyst (epic_analysis.md) → Epic Designer (epic_design.md) → Epic Reviewer (epic_review.json, approve/request_changes/block) → \[design fix loop\] → Epic Planner (story map + per-story ticket files) → `epic-generate-tickets` seeds each ticket into the ticket workflow above.
 3. arch-init workflow (project-level, ticket-less, sentinel id `_arch-init`): `arch-init-prepare` → Arch-Init agent (Phase 1: bootstrap `project_config.json` domains if missing; Phase 2: sweep code + migrate CLAUDE.md architecture prose into this vault, rewire root `CLAUDE.md` to `@`-import `system-overview.md`) → `arch-init-complete` verifies outputs.
 4. Prompt assembly: `build_role_prompt` / `build_epic_role_prompt` compose Role Instruction + Project Context + Architecture (Vault) context + Domain Skills + (optional) Figma context + Task Instruction into a single prompt file written to the run directory.
+5. Claude-wrapper orchestration (`/start-ticket`, `/start-epic`; runner flows above unchanged): loop = `ai_wrap.py next --json` → explicit `ai_run.py <prepare>` → fresh sub-agent on the prompt file → explicit `ai_run.py <complete>` → confirm success from `status.json`.
 
 ## Invariants / Constraints
 
@@ -28,10 +31,12 @@ Fixed headings below (Components, Data Flows, Invariants / Constraints, ADR Inde
 - `status.json` transitions are forward-only except for explicit fix loops (dev fix, architect fix, epic design fix).
 - Ticket-less/project-level commands (currently only `arch-init`) reuse the same per-ticket status/prompt helpers via a fixed sentinel id (`_arch-init`) rather than forking ticket-less helper variants.
 - Skill file content is injected verbatim into prompts — never summarized or transformed by the runner.
+- Claude orchestrator never writes under `.ai/runs/` or `.ai/epics/`, never commits, never uses `next --run`; every `*-complete` is confirmed from `status.json` (exit 0 insufficient — distill retry/BLOCK exit 0).
+- `ai_wrap.py` is read-only (no state mutation); `ai_run.py` is not modified by the wrapper layer.
 - This `system-overview.md`'s headings (Components, Data Flows, Invariants / Constraints, ADR Index) must keep their exact names and order — other tooling (distill, cap checks) reads this file structurally.
 
 ## ADR Index
 
 | ADR | Title | Status |
 |---|---|---|
-| — | No architecture decisions recorded yet | — |
+| ADR-001 | Claude-layer orchestration via read-only sidecar | proposed |
