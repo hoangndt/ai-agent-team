@@ -59,8 +59,7 @@ CLAUDE_MANAGED_FILES = [
 
 # Vault content: project-owned, scaffolded on fresh install, skipped on upgrade.
 # Explicit (src_rel, dst_rel) pairs, relative to .ai/templates/vault/ and .ai/vault/architecture/
-# respectively. This is the exact, exhaustive file set for this ticket — extend, don't replace,
-# when later tickets add generated vault files.
+# respectively. Explicit, exhaustive list: extend it when adding generated vault files.
 VAULT_TEMPLATE_DIR = Path(".ai/templates/vault")
 VAULT_CONTENT_DIR = Path(".ai/vault/architecture")
 VAULT_FILES = [
@@ -551,7 +550,7 @@ def run_install(args: argparse.Namespace) -> int:
     source_root = Path(__file__).resolve().parent
     target = Path(args.target).resolve()
 
-    # AC-14: Verify we're running from inside the source repo
+    # Verify we're running from inside the source repo
     if not (source_root / SOURCE_SENTINEL).exists():
         print(
             f"ERROR: Source files not found. Run this script from the ai-agent-team repo root.",
@@ -596,19 +595,21 @@ def run_install(args: argparse.Namespace) -> int:
                 print("No profiles found under examples/.", file=sys.stderr)
             return 1
 
-    if args.global_claude:
-        rc = install_claude_global(source_root, args)
-        if rc != 0:
-            return rc
+    rc = install_ai(target, args)
+    if rc != 0:
+        return rc
 
-    return install_ai(target, args)
+    # User-level files are written only after the project install is confirmed and done.
+    if args.global_claude:
+        return install_claude_global(source_root, args)
+    return 0
 
 
 def sync_all_projects(config_path: Path, args: argparse.Namespace) -> int:
     """Orchestrate bulk sync to all projects listed in config_path."""
     source_root = Path(__file__).resolve().parent
 
-    # AC-14: Verify source sentinel once before the loop
+    # Verify source sentinel once before the loop
     if not (source_root / SOURCE_SENTINEL).exists():
         print(
             f"ERROR: Source files not found. Run this script from the ai-agent-team repo root.",
@@ -628,15 +629,10 @@ def sync_all_projects(config_path: Path, args: argparse.Namespace) -> int:
                 print("No profiles found under examples/.", file=sys.stderr)
             return 1
 
-    # AC-15: Implicitly bypass per-project confirmation prompts.
+    # Implicitly bypass per-project confirmation prompts.
     # Use a local copy so the caller's namespace is not mutated.
     local_args = argparse.Namespace(**vars(args))
     local_args.yes = True
-
-    if args.global_claude:
-        rc = install_claude_global(source_root, args)
-        if rc != 0:
-            return rc
 
     try:
         projects = load_project_list(config_path)
@@ -647,6 +643,12 @@ def sync_all_projects(config_path: Path, args: argparse.Namespace) -> int:
     if not projects:
         print("[WARNING] No projects listed in config. Nothing to do.")
         return 0
+
+    # Writes outside the repo, so it keeps its own confirmation unless --yes is given.
+    if args.global_claude:
+        rc = install_claude_global(source_root, args)
+        if rc != 0:
+            return rc
 
     results: dict[str, dict[str, str]] = {}
 
@@ -747,7 +749,7 @@ def main() -> None:
         print("ERROR: --claude-home requires --global-claude.", file=sys.stderr)
         sys.exit(1)
 
-    # AC-9: --target and --sync-all are mutually exclusive
+    # --target and --sync-all are mutually exclusive
     if args.target and args.sync_all:
         print("ERROR: --target and --sync-all are mutually exclusive.", file=sys.stderr)
         sys.exit(1)
