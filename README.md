@@ -63,6 +63,8 @@ Options:
 | `--yes` | skip the confirm prompt |
 | `--backup` | copy existing managed files to `.ai_backup_<timestamp>/` before overwrite |
 | `--with-skills <profile>` | also copy `examples/<profile>/skills/` into `.ai/skills/` (profiles: `mi-portal`, `pclab`, `shopify-jp`; see `examples/`) |
+| `--global-claude` | install the 9 `.claude` command/agent files into `~/.claude/` (once) instead of each project's `.claude/`; `.ai/` is still installed per project (see §5.5) |
+| `--claude-home <path>` | with `--global-claude`: use this dir instead of `$CLAUDE_CONFIG_DIR` / `~/.claude` |
 | `--force-project-files` | overwrite project-owned files (`project_config.json`, `.ai/CLAUDE.md`, vault skeleton) |
 
 ### 3.2 What gets installed
@@ -258,6 +260,8 @@ Shortcut/Jira MCP tools are discovered at runtime; if absent or failing, the com
 The orchestrator pauses only for: sub-agent QUESTIONS/BLOCKERS (relayed to you; the same stage's agent is re-dispatched with your answers), a third fix round for a gate (extra round / abort), and runner errors. Each dispatch passes the step's `model` and `effort` from `STEP_MODEL` and echoes `[step] model=… effort=…`.
 
 Under the hood `.ai/bin/ai_wrap.py` (read-only sidecar, never mutates state) provides `next <T> --json`, `epic-next <E> --json`, and `validate-id <ID>`.
+
+**Global install.** `python3 install.py --sync-all --global-claude` (or `--target <p> --global-claude`) writes the commands/agents to `~/.claude/commands` and `~/.claude/agents` once instead of into every project; it asks for confirmation once because it writes outside the projects (`--yes` skips; `--backup` backs up the overwritten global files). Each project still needs `.ai/` (the commands call `.ai/bin/ai_wrap.py` and `ai_run.py` by relative path), so keep running install/sync after `git pull` so the sidecar and the global commands stay in step. A project-level `.claude/commands/<same-name>.md` overrides the global one; the installer prints a note when it finds such copies.
 
 **Sub-agents vs WezTerm**
 
