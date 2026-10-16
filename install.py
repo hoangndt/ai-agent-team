@@ -40,6 +40,20 @@ MANAGED_DIRS = [
     Path(".ai/templates"),
 ]
 
+# Claude Code wrapper assets: explicit file list (never whole dirs) so other files in the
+# target's .claude/ are left alone. Overwritten on install/upgrade like MANAGED_DIRS.
+CLAUDE_MANAGED_FILES = [
+    Path(".claude/commands/create-ticket.md"),
+    Path(".claude/commands/start-ticket.md"),
+    Path(".claude/commands/ticket-status.md"),
+    Path(".claude/commands/create-epic.md"),
+    Path(".claude/commands/start-epic.md"),
+    Path(".claude/commands/epic-status.md"),
+    Path(".claude/agents/workflow-step.md"),
+    Path(".claude/agents/workflow-step-medium.md"),
+    Path(".claude/agents/workflow-step-high.md"),
+]
+
 # Vault content: project-owned, scaffolded on fresh install, skipped on upgrade.
 # Explicit (src_rel, dst_rel) pairs, relative to .ai/templates/vault/ and .ai/vault/architecture/
 # respectively. This is the exact, exhaustive file set for this ticket — extend, don't replace,
@@ -119,6 +133,14 @@ def backup_managed_files(
                     dst.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(f, dst)
                 backed_up.append(str(rel))
+    for claude_rel in CLAUDE_MANAGED_FILES:
+        f = target / claude_rel
+        if f.is_file():
+            dst = backup_dir / claude_rel
+            if not dry_run:
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(f, dst)
+            backed_up.append(str(claude_rel))
     if include_project_files:
         project_file_rels = [Path(".ai/project_config.json"), Path(".ai/CLAUDE.md")]
         project_file_rels += [VAULT_CONTENT_DIR / dst_rel for _, dst_rel in VAULT_FILES]
@@ -223,6 +245,12 @@ def install_ai(target: Path, args: argparse.Namespace) -> int:
                 token = "OVERWRITTEN" if existed else "COPIED"
                 planned_summary.append(f"[{token}] {managed_rel / rel_file}")
 
+    # Claude wrapper files
+    for claude_rel in CLAUDE_MANAGED_FILES:
+        if (source_root / claude_rel).is_file():
+            token = "OVERWRITTEN" if (target / claude_rel).exists() else "COPIED"
+            planned_summary.append(f"[{token}] {claude_rel}")
+
     # project_config.json
     config_dst = target / ".ai" / "project_config.json"
     config_template = source_root / ".ai" / "templates" / "project_config.template.json"
@@ -265,6 +293,7 @@ def install_ai(target: Path, args: argparse.Namespace) -> int:
     has_existing_managed = any(
         (target / d).exists() for d in MANAGED_DIRS
     )
+    has_existing_claude = any((target / f).exists() for f in CLAUDE_MANAGED_FILES)
 
     # --- Print header ---
     print("AI Workflow Installer")
@@ -276,6 +305,9 @@ def install_ai(target: Path, args: argparse.Namespace) -> int:
 
     if has_existing_managed and not dry_run:
         print("[WARNING]       Existing managed files (.ai/bin, .ai/agents, .ai/templates) will be overwritten.")
+        print()
+    if has_existing_claude and not dry_run:
+        print("[WARNING]       Existing template-managed files in .claude/commands and .claude/agents will be overwritten.")
         print()
 
     # --- Confirm (unless --yes or --dry-run) ---
@@ -326,6 +358,25 @@ def install_ai(target: Path, args: argparse.Namespace) -> int:
                     file=sys.stderr,
                 )
                 return 1
+
+    # --- Copy Claude wrapper files ---
+    for claude_rel in CLAUDE_MANAGED_FILES:
+        src = source_root / claude_rel
+        if not src.is_file():
+            print_action("WARNING", str(claude_rel), "source file not found — skipped", dry_run=dry_run)
+            continue
+        try:
+            token = copy_file(src, target / claude_rel, dry_run)
+        except OSError as e:
+            print(f"ERROR: Failed to copy '{claude_rel}': {e}", file=sys.stderr)
+            print(
+                "[WARNING] Install incomplete — target .claude/ may be in a partial state. "
+                "Fix the error and re-run to complete.",
+                file=sys.stderr,
+            )
+            return 1
+        note = "(new file)" if token == "COPIED" else "(replaced existing)"
+        print_action(token, str(claude_rel), note, dry_run=dry_run)
 
     # --- Initialize project-owned files ---
     # project_config.json

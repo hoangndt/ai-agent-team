@@ -74,8 +74,9 @@ Options:
 | `.ai/CLAUDE.md` | project-owned (operating guide) | skipped if exists |
 | `.ai/vault/architecture/{system-overview.md, modules/_domain.template.md, decisions/ADR-NNN-template.md}` | project-owned skeleton | skipped if exists |
 | `.ai/skills/...` | only with `--with-skills` | existing files skipped |
+| `.claude/commands/{create,start}-{ticket,epic}.md`, `{ticket,epic}-status.md`, `.claude/agents/workflow-step*.md` (9 files) | managed (Claude slash commands, see §5.5) | **overwritten**; other files in `.claude/` are never touched, copy under another name to customize |
 
-Nothing outside `.ai/` is touched. Your project's root `CLAUDE.md` is handled later by `arch-init`.
+Outside `.ai/`, only the 9 listed `.claude/commands` and `.claude/agents` files are written (included in `--backup`). Your project's root `CLAUDE.md` is handled later by `arch-init`.
 
 ### 3.3 Sync many projects / upgrade
 
@@ -230,6 +231,63 @@ Done when review = `approve` and QA = `pass` (and distill completes).
 ### 5.4 Fix loops
 
 If review says `request_changes`/`block`, or QA says `fail`, `next` routes you to `dev-fix-prepare`. Developer fixes and **appends** a `## Fix Round N` section to `implementation_report.md`, then `dev-fix-complete`, then back to review. Architect review rejections use `architect-fix-prepare/complete`. Distill has a bounded retry if vault line caps are exceeded.
+
+### 5.5 Using Claude slash commands (single session)
+
+Alternative to WezTerm: stay in **one** Claude Code session. Slash commands orchestrate; each stage runs in a **fresh sub-agent** (Agent tool), so Architect / Developer / Reviewer / QA stay independent. Handoff is still files under `.ai/runs/<TICKET>/`. The old flow (`ai_run.py ticket ... --auto/--auto-flow`, `next --run`) is **unchanged** and still usable at any time; `ai_run.py` was not modified.
+
+| Command | What it does |
+|---|---|
+| `/create-ticket <source> [--domain d]` | source = local epic ticket name (`.ai/epics/*/breakdown/tickets/`), Shortcut id/URL, Jira key/URL, or inline text. Runs `ai_run.py init`; never overwrites an existing run |
+| `/start-ticket <TICKET> [--until <stage>]` | drives the whole pipeline; resumable. `--until`: `architect`, `architect-review`, `dev`, `review`, `qa`, `distill` |
+| `/ticket-status <TICKET>` | read-only state + next step |
+| `/create-epic <source> [--domains a,b]` | inline text / Shortcut / Jira → `epic-init` |
+| `/start-epic <EPIC> [--until <stage>]` | analysis → design → review ⟲ fix → ADR distill → breakdown; then asks before `epic-generate-tickets` and lists `/start-ticket` commands (starts none) |
+| `/epic-status <EPIC>` | read-only |
+
+```
+/create-ticket EPIC-001-US-001-add-schema        # local epic ticket
+/create-ticket sc-12345                          # Shortcut story (needs a Shortcut MCP server)
+/create-ticket PROJ-42 --domain backend          # Jira issue (needs an Atlassian MCP server)
+/create-ticket "fix-login-bug: users cannot log in with SSO"   # inline text (asks for the ID)
+/start-ticket EPIC-001-US-001-add-schema
+```
+
+Shortcut/Jira MCP tools are discovered at runtime; if absent or failing, the command stops with an explicit error and creates nothing.
+
+The orchestrator pauses only for: sub-agent QUESTIONS/BLOCKERS (relayed to you; the same stage's agent is re-dispatched with your answers), a third fix round for a gate (extra round / abort), and runner errors. Each dispatch passes the step's `model` and `effort` from `STEP_MODEL` and echoes `[step] model=… effort=…`.
+
+Under the hood `.ai/bin/ai_wrap.py` (read-only sidecar, never mutates state) provides `next <T> --json`, `epic-next <E> --json`, and `validate-id <ID>`.
+
+**Sub-agents vs WezTerm**
+
+| | slash commands | `--auto-flow` |
+|---|---|---|
+| Sessions | one Claude session | one WezTerm pane + `claude` per step |
+| Questions / blockers | asked in your session | you watch each pane |
+| Ticket source | local / Shortcut / Jira / text | `input.md` by hand |
+| Live view | foreground sub-agent streams inline in the session | full pane per step |
+| Unattended | no (gates need you) | yes |
+
+**Permissions.** Sub-agents inherit the session's permission mode and the wrapper never escalates to bypass. Until you verify how prompts raised inside a sub-agent behave (below), treat an allow-list as mandatory, e.g. in `.claude/settings.local.json`:
+
+```json
+{ "permissions": { "allow": [
+  "Bash(python .ai/bin/ai_run.py *)", "Bash(python3 .ai/bin/ai_run.py *)",
+  "Bash(python .ai/bin/ai_wrap.py *)", "Bash(python3 .ai/bin/ai_wrap.py *)",
+  "Bash(git status *)", "Bash(git diff *)", "Bash(git log *)", "Edit", "Write"
+] } }
+```
+
+(Developer prompts also run `git` commit commands; add those only if you accept that.) A sub-agent stalled on a permission prompt shows up as a failed step.
+
+**Caveats / not yet verified in a live session** (verify once, then record the outcome here):
+
+- Per-call `effort`: it is *passed and echoed*, but honoring cannot be detected from the orchestrator. If the tool rejects it, the commands fall back to `workflow-step-medium` / `workflow-step-high`.
+- Whether permission prompts inside a sub-agent surface to you or are auto-denied (decides if the allow-list is mandatory).
+- Whether a sub-agent can spawn sub-agents (not needed), whether `SendMessage` can continue a finished agent (else fresh agents are used on the same prompt file, still correct), and whether you can inspect a running sub-agent beyond inline streaming (no `--background` flag is shipped; use `--auto-flow` for a full pane).
+- Command names do not collide with the global `~/.claude/commands` or `~/.claude/agents` on the author's machine; check yours.
+- With the `rtk` hook installed, `ai_wrap.py ... --json` output is retried via `rtk proxy` if it comes back non-JSON.
 
 ---
 
