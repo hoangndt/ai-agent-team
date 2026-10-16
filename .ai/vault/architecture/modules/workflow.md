@@ -18,6 +18,12 @@ generation for every agent role, output verification, and stage routing. Everyth
 - `.ai/skills/<domain>/<skill>/SKILL.md` — domain skill files wired into role prompts via
   `project_config.json`'s `skills` lists.
 - `.ai/templates/` — example architect artifact/report templates (not injected automatically).
+- `.ai/bin/ai_wrap.py` — read-only sidecar: `next|epic-next <ID> --json` (step, kind, prompt_path,
+  model/effort, next_complete, fix_round, missing_outputs, status.json echo) and `validate-id`;
+  imports `ai_run.next_action`/`epic_next_action`; never mutates state.
+- `.claude/commands/*.md`, `.claude/agents/workflow-step*.md` — Claude Code wrapper: `/create-*`,
+  `/start-*`, `/*-status` orchestrators plus generic per-stage worker agents (medium/high tiers).
+  Installed by `install.py` via explicit `CLAUDE_MANAGED_FILES` (not whole-dir).
 - `examples/` — reference fixture projects (`mi-portal`, `pclab`, `shopify-jp`) used for manual
   validation of runner changes.
 
@@ -45,6 +51,11 @@ The `arch-init` command is the one project-level, ticket-less exception: it reus
 prepare/act/complete + status.json machinery via a fixed sentinel ticket id (`_arch-init`,
 `.ai/runs/_arch-init/`) instead of forking ticket-less helper variants.
 
+Claude-wrapper path (ADR-001, proposed): `/start-ticket|/start-epic` loop runs
+`ai_wrap.py next --json` → explicit `ai_run.py <prepare>` → fresh `workflow-step` sub-agent on
+`prompt_path` → explicit `ai_run.py <complete>` → confirm from `status.json`. Fix-round counts come
+from `status.json` history (cap 2, then ask operator).
+
 ## Entry Points
 
 - CLI: `python .ai/bin/ai_run.py <subcommand> ...` (see `KNOWN_SUBCOMMANDS`, `build_parser`,
@@ -54,6 +65,7 @@ prepare/act/complete + status.json machinery via a fixed sentinel ticket id (`_a
 - `ticket --auto-flow` / `epic --auto-flow` — run the full pipeline unattended via WezTerm +
   sentinel polling.
 - `arch-init-prepare` / `arch-init-complete` — project-level bootstrap, no ticket id.
+- `/create-ticket`, `/start-ticket`, `/ticket-status`, `/create-epic`, `/start-epic`, `/epic-status` — Claude slash commands; `python .ai/bin/ai_wrap.py next|epic-next|validate-id`.
 
 ## Dependencies
 
@@ -79,3 +91,6 @@ prepare/act/complete + status.json machinery via a fixed sentinel ticket id (`_a
   changes only.
 - `*-complete` functions must never trigger a WezTerm spawn — only `*-prepare` steps do, and only
   when `--run-auto` is passed.
+- Wrapper orchestrator must not write under `.ai/runs/`/`.ai/epics/`, commit, or use `next --run`
+  (it re-routes from mutated `current_stage`); confirm every complete from `status.json`, not exit
+  code (distill retry and `[BLOCK]` exit 0). `ai_wrap.py` stays read-only; `ai_run.py` unmodified.

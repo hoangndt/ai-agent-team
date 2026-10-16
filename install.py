@@ -17,6 +17,9 @@ Options:
     --dry-run                   Simulate actions without making any changes
     --yes                       Skip interactive confirmation prompt
     --backup                    Backup existing managed files before overwriting
+    --global-claude             Install the Claude slash commands/agents into ~/.claude (user level)
+                                instead of each target's .claude/. .ai/ is still installed per target.
+    --claude-home <path>        Override the user-level Claude dir (default: $CLAUDE_CONFIG_DIR or ~/.claude)
 """
 
 from __future__ import annotations
@@ -40,10 +43,23 @@ MANAGED_DIRS = [
     Path(".ai/templates"),
 ]
 
+# Claude Code wrapper assets: explicit file list (never whole dirs) so other files in the
+# target's .claude/ are left alone. Overwritten on install/upgrade like MANAGED_DIRS.
+CLAUDE_MANAGED_FILES = [
+    Path(".claude/commands/create-ticket.md"),
+    Path(".claude/commands/start-ticket.md"),
+    Path(".claude/commands/ticket-status.md"),
+    Path(".claude/commands/create-epic.md"),
+    Path(".claude/commands/start-epic.md"),
+    Path(".claude/commands/epic-status.md"),
+    Path(".claude/agents/workflow-step.md"),
+    Path(".claude/agents/workflow-step-medium.md"),
+    Path(".claude/agents/workflow-step-high.md"),
+]
+
 # Vault content: project-owned, scaffolded on fresh install, skipped on upgrade.
 # Explicit (src_rel, dst_rel) pairs, relative to .ai/templates/vault/ and .ai/vault/architecture/
-# respectively. This is the exact, exhaustive file set for this ticket — extend, don't replace,
-# when later tickets add generated vault files.
+# respectively. Explicit, exhaustive list: extend it when adding generated vault files.
 VAULT_TEMPLATE_DIR = Path(".ai/templates/vault")
 VAULT_CONTENT_DIR = Path(".ai/vault/architecture")
 VAULT_FILES = [
@@ -54,6 +70,9 @@ VAULT_FILES = [
 
 # Sentinel file to verify we are running from inside the source repo
 SOURCE_SENTINEL = Path(".ai/bin/ai_run.py")
+
+# install_ai return code when the operator declines the confirmation prompt.
+INSTALL_DECLINED = 2
 
 DEFAULT_CONFIG = "projects.json"
 
@@ -99,6 +118,7 @@ def backup_managed_files(
     timestamp: str,
     dry_run: bool,
     include_project_files: bool = False,
+    include_claude_files: bool = True,
 ) -> list[str]:
     """
     Copy all existing managed files from target to a backup directory.
@@ -119,6 +139,14 @@ def backup_managed_files(
                     dst.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(f, dst)
                 backed_up.append(str(rel))
+    for claude_rel in CLAUDE_MANAGED_FILES if include_claude_files else []:
+        f = target / claude_rel
+        if f.is_file():
+            dst = backup_dir / claude_rel
+            if not dry_run:
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(f, dst)
+            backed_up.append(str(claude_rel))
     if include_project_files:
         project_file_rels = [Path(".ai/project_config.json"), Path(".ai/CLAUDE.md")]
         project_file_rels += [VAULT_CONTENT_DIR / dst_rel for _, dst_rel in VAULT_FILES]
@@ -198,11 +226,68 @@ def print_sync_summary(results: dict) -> None:
         print(f"  {status:<7} {path_str}{note}")
 
 
+def resolve_claude_home(args: argparse.Namespace) -> Path:
+    """User-level Claude config dir: --claude-home, else $CLAUDE_CONFIG_DIR, else ~/.claude."""
+    if args.claude_home:
+        return Path(args.claude_home).expanduser().resolve()
+    env = os.environ.get("CLAUDE_CONFIG_DIR")
+    return Path(env).expanduser().resolve() if env else Path.home() / ".claude"
+
+
+def install_claude_global(source_root: Path, args: argparse.Namespace) -> int:
+    """
+    Install CLAUDE_MANAGED_FILES into the user-level Claude dir (same explicit file list as the
+    per-project install; other files there are never touched). Returns 0 on success, 1 on failure.
+    """
+    dry_run = args.dry_run
+    claude_home = resolve_claude_home(args)
+    timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+    print(f"Global Claude install -> {claude_home}")
+    planned = []
+    for rel in CLAUDE_MANAGED_FILES:
+        if (source_root / rel).is_file():
+            token = "OVERWRITTEN" if (claude_home / rel.relative_to(".claude")).exists() else "COPIED"
+            planned.append(f"[{token}] {claude_home / rel.relative_to('.claude')}")
+    if not dry_run and any(line.startswith("[OVERWRITTEN]") for line in planned):
+        print("[WARNING]       Existing template-managed files in the user-level Claude dir will be overwritten.")
+    if not args.yes and not dry_run and not confirm_proceed(planned):
+        print("Aborted.")
+        return 1
+
+    if args.backup:
+        backed_up = 0
+        for rel in CLAUDE_MANAGED_FILES:
+            f = claude_home / rel.relative_to(".claude")
+            if f.is_file():
+                dst = claude_home / f".ai_backup_{timestamp}" / rel.relative_to(".claude")
+                if not dry_run:
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                    shutil.copy2(f, dst)
+                backed_up += 1
+        print_action("BACKUP", str(claude_home / f".ai_backup_{timestamp}"), f"({backed_up} files backed up)", dry_run=dry_run)
+
+    for rel in CLAUDE_MANAGED_FILES:
+        src = source_root / rel
+        dst = claude_home / rel.relative_to(".claude")
+        if not src.is_file():
+            print_action("WARNING", str(rel), "source file not found — skipped", dry_run=dry_run)
+            continue
+        try:
+            token = copy_file(src, dst, dry_run)
+        except OSError as e:
+            print(f"ERROR: Failed to copy '{rel}' to '{dst}': {e}", file=sys.stderr)
+            return 1
+        print_action(token, str(dst), "(new file)" if token == "COPIED" else "(replaced existing)", dry_run=dry_run)
+    print()
+    return 0
+
+
 def install_ai(target: Path, args: argparse.Namespace) -> int:
     """
     Install or upgrade .ai into an already-validated target directory.
     Caller is responsible for: sentinel check, target existence/writability, with-skills validation.
-    Returns 0 on success, 1 on failure.
+    Returns 0 on success, 1 on failure, INSTALL_DECLINED if the operator aborts.
     """
     source_root = Path(__file__).resolve().parent
     dry_run = args.dry_run
@@ -222,6 +307,13 @@ def install_ai(target: Path, args: argparse.Namespace) -> int:
                 existed = dst.exists()
                 token = "OVERWRITTEN" if existed else "COPIED"
                 planned_summary.append(f"[{token}] {managed_rel / rel_file}")
+
+    # Claude wrapper files (project-level unless --global-claude)
+    project_claude = not args.global_claude
+    for claude_rel in CLAUDE_MANAGED_FILES if project_claude else []:
+        if (source_root / claude_rel).is_file():
+            token = "OVERWRITTEN" if (target / claude_rel).exists() else "COPIED"
+            planned_summary.append(f"[{token}] {claude_rel}")
 
     # project_config.json
     config_dst = target / ".ai" / "project_config.json"
@@ -265,6 +357,8 @@ def install_ai(target: Path, args: argparse.Namespace) -> int:
     has_existing_managed = any(
         (target / d).exists() for d in MANAGED_DIRS
     )
+    has_existing_claude = project_claude and any((target / f).exists() for f in CLAUDE_MANAGED_FILES)
+    shadowing = args.global_claude and [str(f) for f in CLAUDE_MANAGED_FILES if (target / f).exists()]
 
     # --- Print header ---
     print("AI Workflow Installer")
@@ -277,12 +371,21 @@ def install_ai(target: Path, args: argparse.Namespace) -> int:
     if has_existing_managed and not dry_run:
         print("[WARNING]       Existing managed files (.ai/bin, .ai/agents, .ai/templates) will be overwritten.")
         print()
+    if has_existing_claude and not dry_run:
+        print("[WARNING]       Existing template-managed files in .claude/commands and .claude/agents will be overwritten.")
+        print()
+
+    if shadowing:
+        print("[NOTE]          Project-level .claude copies take precedence over the global ones; remove them to use the global versions:")
+        for f in shadowing:
+            print(f"                  {f}")
+        print()
 
     # --- Confirm (unless --yes or --dry-run) ---
     if not args.yes and not dry_run:
         if not confirm_proceed(planned_summary):
             print("Aborted.")
-            return 0
+            return INSTALL_DECLINED
 
     # --- Backup ---
     if args.backup:
@@ -291,6 +394,7 @@ def install_ai(target: Path, args: argparse.Namespace) -> int:
             backed_up = backup_managed_files(
                 target, source_root, timestamp, dry_run,
                 include_project_files=args.force_project_files,
+                include_claude_files=project_claude,
             )
         except OSError as e:
             print(f"ERROR: Backup failed: {e}", file=sys.stderr)
@@ -326,6 +430,25 @@ def install_ai(target: Path, args: argparse.Namespace) -> int:
                     file=sys.stderr,
                 )
                 return 1
+
+    # --- Copy Claude wrapper files ---
+    for claude_rel in CLAUDE_MANAGED_FILES if project_claude else []:
+        src = source_root / claude_rel
+        if not src.is_file():
+            print_action("WARNING", str(claude_rel), "source file not found — skipped", dry_run=dry_run)
+            continue
+        try:
+            token = copy_file(src, target / claude_rel, dry_run)
+        except OSError as e:
+            print(f"ERROR: Failed to copy '{claude_rel}': {e}", file=sys.stderr)
+            print(
+                "[WARNING] Install incomplete — target .claude/ may be in a partial state. "
+                "Fix the error and re-run to complete.",
+                file=sys.stderr,
+            )
+            return 1
+        note = "(new file)" if token == "COPIED" else "(replaced existing)"
+        print_action(token, str(claude_rel), note, dry_run=dry_run)
 
     # --- Initialize project-owned files ---
     # project_config.json
@@ -430,7 +553,7 @@ def run_install(args: argparse.Namespace) -> int:
     source_root = Path(__file__).resolve().parent
     target = Path(args.target).resolve()
 
-    # AC-14: Verify we're running from inside the source repo
+    # Verify we're running from inside the source repo
     if not (source_root / SOURCE_SENTINEL).exists():
         print(
             f"ERROR: Source files not found. Run this script from the ai-agent-team repo root.",
@@ -475,14 +598,23 @@ def run_install(args: argparse.Namespace) -> int:
                 print("No profiles found under examples/.", file=sys.stderr)
             return 1
 
-    return install_ai(target, args)
+    rc = install_ai(target, args)
+    if rc == INSTALL_DECLINED:
+        return 0
+    if rc != 0:
+        return rc
+
+    # User-level files are written only after the project install is confirmed and done.
+    if args.global_claude:
+        return install_claude_global(source_root, args)
+    return 0
 
 
 def sync_all_projects(config_path: Path, args: argparse.Namespace) -> int:
     """Orchestrate bulk sync to all projects listed in config_path."""
     source_root = Path(__file__).resolve().parent
 
-    # AC-14: Verify source sentinel once before the loop
+    # Verify source sentinel once before the loop
     if not (source_root / SOURCE_SENTINEL).exists():
         print(
             f"ERROR: Source files not found. Run this script from the ai-agent-team repo root.",
@@ -502,7 +634,7 @@ def sync_all_projects(config_path: Path, args: argparse.Namespace) -> int:
                 print("No profiles found under examples/.", file=sys.stderr)
             return 1
 
-    # AC-15: Implicitly bypass per-project confirmation prompts.
+    # Implicitly bypass per-project confirmation prompts.
     # Use a local copy so the caller's namespace is not mutated.
     local_args = argparse.Namespace(**vars(args))
     local_args.yes = True
@@ -516,6 +648,12 @@ def sync_all_projects(config_path: Path, args: argparse.Namespace) -> int:
     if not projects:
         print("[WARNING] No projects listed in config. Nothing to do.")
         return 0
+
+    # Writes outside the repo, so it keeps its own confirmation unless --yes is given.
+    if args.global_claude:
+        rc = install_claude_global(source_root, args)
+        if rc != 0:
+            return rc
 
     results: dict[str, dict[str, str]] = {}
 
@@ -598,9 +736,25 @@ def main() -> None:
         help="Backup existing managed files to .ai_backup_<timestamp>/ before overwriting",
     )
 
+    parser.add_argument(
+        "--global-claude",
+        action="store_true",
+        help="Install .claude commands/agents into the user-level Claude dir (~/.claude) instead of each target",
+    )
+    parser.add_argument(
+        "--claude-home",
+        metavar="<path>",
+        default=None,
+        help="User-level Claude dir for --global-claude (default: $CLAUDE_CONFIG_DIR or ~/.claude)",
+    )
+
     args = parser.parse_args()
 
-    # AC-9: --target and --sync-all are mutually exclusive
+    if args.claude_home and not args.global_claude:
+        print("ERROR: --claude-home requires --global-claude.", file=sys.stderr)
+        sys.exit(1)
+
+    # --target and --sync-all are mutually exclusive
     if args.target and args.sync_all:
         print("ERROR: --target and --sync-all are mutually exclusive.", file=sys.stderr)
         sys.exit(1)
