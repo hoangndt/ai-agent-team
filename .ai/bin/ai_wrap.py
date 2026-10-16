@@ -10,6 +10,9 @@ and emits machine-readable routing info. It never mutates run state and has no
     python .ai/bin/ai_wrap.py epic-next <EPIC> --json
     python .ai/bin/ai_wrap.py validate-id <ID>
 
+`prompt_path` is null when kind=prepare and state=failed; re-query `next --json`
+after a successful re-prepare to get the real path.
+
 `missing_outputs` is a file-presence check only. It never predicts whether the
 runner's `*-complete` step will pass. These completes also validate content:
 
