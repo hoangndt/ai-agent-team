@@ -10,8 +10,8 @@ sys.path.insert(0, str(ROOT))
 import install  # noqa: E402
 
 
-def run(*args):
-    return subprocess.run([sys.executable, str(INSTALL), *args], capture_output=True, text=True, input="n\n")
+def run(*args, stdin="n\n"):
+    return subprocess.run([sys.executable, str(INSTALL), *args], capture_output=True, text=True, input=stdin)
 
 
 class ClaudeInstallTests(unittest.TestCase):
@@ -60,8 +60,10 @@ class ClaudeInstallTests(unittest.TestCase):
 
     def test_declined_project_confirm_leaves_global_untouched(self):
         with tempfile.TemporaryDirectory() as d, tempfile.TemporaryDirectory() as h:
-            r = run("--target", d, "--global-claude", "--claude-home", h)
-            self.assertNotEqual(r.returncode, 0)
+            r = run("--target", d, "--global-claude", "--claude-home", h, stdin="n\ny\n")
+            self.assertEqual(r.returncode, 0, r.stderr)
+            self.assertEqual(r.stdout.count("Aborted."), 1)
+            self.assertNotIn("Global Claude install", r.stdout)
             self.assertEqual(list(Path(h).iterdir()), [])
 
 

@@ -71,6 +71,9 @@ VAULT_FILES = [
 # Sentinel file to verify we are running from inside the source repo
 SOURCE_SENTINEL = Path(".ai/bin/ai_run.py")
 
+# install_ai return code when the operator declines the confirmation prompt.
+INSTALL_DECLINED = 2
+
 DEFAULT_CONFIG = "projects.json"
 
 
@@ -284,7 +287,7 @@ def install_ai(target: Path, args: argparse.Namespace) -> int:
     """
     Install or upgrade .ai into an already-validated target directory.
     Caller is responsible for: sentinel check, target existence/writability, with-skills validation.
-    Returns 0 on success, 1 on failure.
+    Returns 0 on success, 1 on failure, INSTALL_DECLINED if the operator aborts.
     """
     source_root = Path(__file__).resolve().parent
     dry_run = args.dry_run
@@ -382,7 +385,7 @@ def install_ai(target: Path, args: argparse.Namespace) -> int:
     if not args.yes and not dry_run:
         if not confirm_proceed(planned_summary):
             print("Aborted.")
-            return 0
+            return INSTALL_DECLINED
 
     # --- Backup ---
     if args.backup:
@@ -596,6 +599,8 @@ def run_install(args: argparse.Namespace) -> int:
             return 1
 
     rc = install_ai(target, args)
+    if rc == INSTALL_DECLINED:
+        return 0
     if rc != 0:
         return rc
 
