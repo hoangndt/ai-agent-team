@@ -1,0 +1,64 @@
+{
+  "default": {
+    "model": "sonnet",
+    "effort": "high"
+  },
+  "steps": {
+    "architect-prepare": {
+      "model": "sonnet",
+      "effort": "high"
+    },
+    "architect-fix-prepare": {
+      "model": "sonnet",
+      "effort": "medium"
+    },
+    "epic-analysis-prepare": {
+      "model": "opus",
+      "effort": "high"
+    },
+    "epic-design-prepare": {
+      "model": "opus",
+      "effort": "high"
+    },
+    "epic-design-fix-prepare": {
+      "model": "sonnet",
+      "effort": "high"
+    },
+    "architect-review-prepare": {
+      "model": "sonnet",
+      "effort": "high"
+    },
+    "dev-prepare": {
+      "model": "sonnet",
+      "effort": "high"
+    },
+    "review-prepare": {
+      "model": "sonnet",
+      "effort": "high"
+    },
+    "dev-fix-prepare": {
+      "model": "sonnet",
+      "effort": "medium"
+    },
+    "qa-prepare": {
+      "model": "sonnet",
+      "effort": "medium"
+    },
+    "distill-prepare": {
+      "model": "sonnet",
+      "effort": "medium"
+    },
+    "epic-review-prepare": {
+      "model": "sonnet",
+      "effort": "medium"
+    },
+    "epic-breakdown-prepare": {
+      "model": "sonnet",
+      "effort": "high"
+    },
+    "adr-distill-prepare": {
+      "model": "sonnet",
+      "effort": "medium"
+    }
+  }
+}
