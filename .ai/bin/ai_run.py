@@ -99,7 +99,7 @@ from ai_runner.routing import (  # noqa: F401
     show_epic_status, show_status,
 )
 from ai_runner.steps import (  # noqa: F401
-    FALLBACK_STEP_MODEL, StepConfigError, get_step_model, load_step_models,
+    FALLBACK_MODEL_EFFORT, StepConfigError, get_step_model, load_step_models,
     preflight_step_models, step_models_path,
 )
 from ai_runner.wezterm import (  # noqa: F401

@@ -8,7 +8,7 @@ from .constants import BASE, ENGINE_REGISTRY, KNOWN_PREPARE_STEPS
 
 # Used only when step_models.json is absent, so a project that has not been
 # (re)installed still runs.
-FALLBACK_STEP_MODEL = ("sonnet", "high")
+FALLBACK_MODEL_EFFORT = ("sonnet", "high")
 
 _warned_missing = set()
 
@@ -41,11 +41,11 @@ def load_step_models() -> Tuple[Tuple[str, str], Dict[str, Tuple[str, str]]]:
         if key not in _warned_missing:
             _warned_missing.add(key)
             print(
-                f"[WARN] {path} not found; using built-in model={FALLBACK_STEP_MODEL[0]}, "
-                f"effort={FALLBACK_STEP_MODEL[1]} for every step. Re-run install.py to create it.",
+                f"[WARN] {path} not found; using built-in model={FALLBACK_MODEL_EFFORT[0]}, "
+                f"effort={FALLBACK_MODEL_EFFORT[1]} for every step. Re-run install.py to create it.",
                 file=sys.stderr,
             )
-        return FALLBACK_STEP_MODEL, {}
+        return FALLBACK_MODEL_EFFORT, {}
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as exc:

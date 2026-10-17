@@ -12,7 +12,7 @@ sys.dont_write_bytecode = True
 
 import ai_run  # noqa: E402
 
-# Names the single-file runner exposed, saved before the split.
+# Names ai_run must keep exposing (fixture in tests/data/ai_run_names.json).
 OLD_NAMES = json.loads((Path(__file__).parent / "data" / "ai_run_names.json").read_text())
 MODULES = sorted(p.stem for p in (BIN / "ai_runner").glob("*.py") if p.stem != "__init__")
 

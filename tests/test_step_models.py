@@ -19,7 +19,7 @@ sys.dont_write_bytecode = True
 import ai_run  # noqa: E402
 from ai_runner import steps, wezterm  # noqa: E402
 
-# Previously hardcoded in ai_run.py; the shipped config must keep these values.
+# Reference model/effort table the shipped config must match.
 OLD_DEFAULT = ("sonnet", "high")
 OLD_TABLE = {
     "architect-prepare": ("sonnet", "high"),
