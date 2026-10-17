@@ -11,8 +11,8 @@ from .paths import (
     epic_breakdown_prompt_path, epic_design_fix_prompt_path, epic_design_path,
     epic_design_prompt_path, epic_input_file, epic_path, epic_review_fix_context_path,
     epic_review_prompt_path, epic_review_report_path, epic_story_map_path,
-    epic_story_status_path, epic_tickets_dir, input_file, now,
-    previous_epic_review_path,
+    epic_breakdown_review_report_path, epic_story_status_path, epic_tickets_dir,
+    input_file, now, previous_epic_review_path,
 )
 from .state import (
     complete_epic_stage, ensure_base_dirs, ensure_epic_dirs,
@@ -20,7 +20,10 @@ from .state import (
     load_epic_status, load_project_config, read, save_epic_status, set_epic_artifact,
     set_epic_runner, update_epic_stage, write,
 )
-from .context import file_ref_list, get_epic_domains, next_adr_id, vault_root
+from .context import file_ref_list, next_adr_id, vault_root
+from .epic_breakdown_checks import (
+    breakdown_review_started, parse_ticket_domains, validate_breakdown,
+)
 from .prompts import build_epic_review_fix_context, build_epic_role_prompt
 
 
@@ -552,6 +555,80 @@ def epic_design_fix_complete(epic: str) -> None:
     print(f"[OK] Epic design fix verified for {epic}")
 
 
+def breakdown_ticket_rules(epic: str) -> str:
+    """Story map, ticket format and sizing rules shared by the breakdown and fix prompts."""
+    return f"""## Story Map Requirements
+
+1. List all user stories in priority order
+2. Group stories by theme or functional area
+3. Note dependencies between stories
+4. If a quality concern applies (see the Quality Notes triggers below), add a `## Quality Notes` section listing each issue with: ticket ID, concern type, and severity (high/medium/low)
+
+## Ticket File Requirements
+
+- Filename format: `<EPIC-ID>-<STORY-ID>-<slug>.md` (e.g. `EPIC-001-US-001-add-cli-commands.md`)
+- Each ticket is one independently verifiable feature slice, delivered across every domain it needs.
+- Each ticket file MUST contain all of the following sections using exact `##` level headers:
+
+  ```
+  ## Summary
+  ## Goal
+  ## Scope
+  ## Out of Scope
+  ## Acceptance Criteria
+  ## Domains
+  ## Domain Checklist
+  ## Verification
+  ## Dependencies
+  ## Suggested Order
+  ## Notes
+  ## References
+  ```
+
+- `## Goal` — must be non-empty; state what this ticket achieves
+- `## Scope` — must be non-empty; list exactly what is included
+- `## Acceptance Criteria` — at least two concrete, testable criteria describing the end-to-end behavior of the feature (not placeholders like "works correctly")
+- `## Domains` — one line, comma-separated, primary domain first (e.g. `backend, frontend, data`); every value must be one of the configured project domains
+- `## Domain Checklist` — one `### <domain>` subsection per listed domain, each with concrete `- [ ]` items (what to build or change in that domain). Required when more than one domain is listed; optional for single-domain tickets
+- `## Verification` — required for every ticket: steps a manager can run on dev/stage with the expected observable result (UI path, API call, query or dashboard, log line, config flag), including data or migration checks where relevant
+- `## References` — must contain links to the epic analysis, design, and story status files:
+  ```
+  - [Epic Analysis]({epic_analysis_path(epic).as_posix()})
+  - [Epic Design]({epic_design_path(epic).as_posix()})
+  - [Epic Story Status]({epic_story_status_path(epic).as_posix()})
+  ```
+
+## Sizing and Splitting Rules
+
+- The unit of sizing is one independently verifiable feature/outcome per ticket, spanning all needed domains. "Done" means a manager can verify the feature on dev/stage.
+- Never split a feature by domain, layer, or file (for example one ticket for the migration, one for the API, one for the UI of the same feature).
+- Split only when the slices are independently verifiable and independently valuable, or when a dependency or risk boundary needs separate sign-off.
+- Shared foundations (schema, infrastructure, flags) become their own ticket only when two or more feature tickets depend on them AND the foundation has its own Verification; otherwise fold them into the first feature ticket that consumes them.
+- Do not estimate durations and do not target a ticket count; judge size only by the rule above.
+
+## Quality Notes Triggers
+
+Add a `## Quality Notes` entry (ticket ID | concern | severity) when:
+- a ticket was kept separate from an adjacent one, or merged with one, against the rules above and the reason is not obvious from its Goal
+- a ticket bundles more than one independently verifiable outcome and was kept anyway
+- a ticket exists only for one domain or layer of a feature that other tickets also deliver
+
+Omit `## Quality Notes` when no trigger applies.
+
+## Self-Review Checklist
+
+Before writing output, verify:
+- Each ticket delivers one independently verifiable outcome a manager can check on dev/stage
+- No ticket exists only for one domain or layer of a feature delivered elsewhere
+- No two tickets share overlapping scope (same files, same API endpoints, same data model fields)
+- Every ticket has at least two concrete, testable Acceptance Criteria
+- Every multi-domain ticket has a `### <domain>` checklist per listed domain and a runnable `## Verification`
+- `## Goal` and `## Scope` are distinct and non-empty in every ticket
+- No ticket title is a vague action phrase (e.g. "Improve X", "Refactor Y")
+- Do NOT produce god tickets (several unrelated features), per-domain tickets, or per-layer tickets
+"""
+
+
 def epic_breakdown_prepare(epic: str) -> None:
     update_epic_stage(epic, "epic_breakdown_prepare")
     set_epic_runner(epic, "epic-breakdown-prepare")
@@ -604,52 +681,7 @@ Write individual ticket files directly to:
 Write the story status tracker directly to:
 - {epic_story_status_path(epic).as_posix()}
 
-## Story Map Requirements
-
-1. List all user stories in priority order
-2. Group stories by theme or functional area
-3. Note dependencies between stories
-4. If any quality concerns are detected (overlap, oversize, vague AC), add a `## Quality Notes` section listing each issue with: ticket ID, concern type, and severity (high/medium/low)
-
-## Ticket File Requirements
-
-- Filename format: `<EPIC-ID>-<STORY-ID>-<slug>.md` (e.g. `EPIC-001-US-001-add-cli-commands.md`)
-- Each ticket file MUST contain all of the following sections using exact `##` level headers:
-
-  ```
-  ## Summary
-  ## Goal
-  ## Scope
-  ## Out of Scope
-  ## Acceptance Criteria
-  ## Dependencies
-  ## Suggested Order
-  ## Domain
-  ## Notes
-  ## References
-  ```
-
-- `## Goal` — must be non-empty; state what this ticket achieves
-- `## Scope` — must be non-empty; list exactly what is included
-- `## Acceptance Criteria` — must contain at least two concrete, testable criteria (not placeholders like "works correctly")
-- `## Domain` — must be set to one of the configured project domains
-- `## References` — must contain links to the epic analysis, design, and story status files:
-  ```
-  - [Epic Analysis]({epic_analysis_path(epic).as_posix()})
-  - [Epic Design]({epic_design_path(epic).as_posix()})
-  - [Epic Story Status]({epic_story_status_path(epic).as_posix()})
-  ```
-
-## Quality Requirements
-
-Before writing output, apply the self-review checklist:
-- Every ticket is estimable within 1–3 days
-- No two tickets share overlapping scope (same files, same API endpoints, same data model fields)
-- Every ticket has at least two concrete, testable Acceptance Criteria
-- `## Goal` and `## Scope` are distinct and non-empty in every ticket
-- No ticket title is a vague action phrase (e.g. "Improve X", "Refactor Y")
-- Do NOT produce god tickets (covering multiple features) or layer-split tickets without independent user value
-
+{breakdown_ticket_rules(epic)}
 ## Story Status Tracker Requirements
 
 The `epic_story_status.md` file must follow this format exactly:
@@ -691,7 +723,7 @@ Rules:
 - One section per workstream, matching the story map groupings
 - All tickets start with status `⬜`, Branch `—`, Report `—`
 - Progress Summary totals must be accurate
-- Story IDs in the table match the ticket file prefixes (e.g. `US-001`)
+- Story IDs in the table match the ticket file prefixes (e.g. `US-001`); every ticket file has exactly one row and every row has a ticket file
 
 ## Important
 
@@ -713,96 +745,7 @@ def epic_breakdown_complete(epic: str) -> None:
     update_epic_stage(epic, "epic_breakdown_complete")
     set_epic_runner(epic, "epic-breakdown-complete")
 
-    ensure_non_empty_epic_files(
-        [epic_story_map_path(epic), epic_story_status_path(epic)],
-        "epic_breakdown_complete",
-        epic,
-    )
-
-    ticket_files = list(epic_tickets_dir(epic).glob("*.md"))
-    if not ticket_files:
-        fail_epic_stage(
-            epic,
-            "epic_breakdown_complete",
-            "No ticket files found in breakdown/tickets/",
-        )
-        raise FileNotFoundError(
-            f"No ticket files found in {epic_tickets_dir(epic).as_posix()}. "
-            "The epic_planner must write at least one *.md file there."
-        )
-
-    # Validate ticket filenames follow <EPIC-ID>-<STORY-ID>-<slug>.md format
-    ticket_name_re = re.compile(r"^EPIC-\d+-[A-Z]+-\d+-.+\.md$", re.IGNORECASE)
-    bad_names = [tf.name for tf in ticket_files if not ticket_name_re.match(tf.name)]
-    if bad_names:
-        msg = (
-            "Ticket file(s) do not follow the required naming format "
-            "`<EPIC-ID>-<STORY-ID>-<slug>.md` (e.g. EPIC-001-US-001-add-schema.md):\n"
-            + "\n".join(f"  {n}" for n in bad_names)
-        )
-        fail_epic_stage(epic, "epic_breakdown_complete", msg)
-        raise ValueError(msg)
-
-    # Verify each ticket file has a non-empty ## Domain section
-    initialized_domains = set(get_epic_domains(epic))
-    domain_errors = []
-    for tf in ticket_files:
-        content = tf.read_text(encoding="utf-8")
-        # Find ## Domain header and extract the value on the next non-blank line
-        domain_value = ""
-        lines = content.splitlines()
-        for i, line in enumerate(lines):
-            if line.strip().lower().startswith("## domain"):
-                # collect lines after the header until the next ## heading or EOF
-                for j in range(i + 1, len(lines)):
-                    stripped = lines[j].strip()
-                    if stripped.startswith("#"):
-                        break
-                    if stripped:
-                        domain_value = stripped
-                        break
-                break
-        if not domain_value:
-            domain_errors.append(f"  {tf.name}: missing or empty '## Domain' section")
-        elif initialized_domains and domain_value not in initialized_domains:
-            domain_errors.append(
-                f"  {tf.name}: '## Domain' value '{domain_value}' is not one of the "
-                f"initialized domains ({', '.join(sorted(initialized_domains))})"
-            )
-
-    if domain_errors:
-        msg = "Ticket file(s) failed ## Domain validation:\n" + "\n".join(domain_errors)
-        fail_epic_stage(epic, "epic_breakdown_complete", msg)
-        raise ValueError(msg)
-
-    # Validate ## Goal, ## Scope, ## Acceptance Criteria are non-empty in each ticket
-    def _section_is_non_empty(lines: list, header: str) -> bool:
-        """Return True if the named ## section exists and has at least one non-blank line."""
-        header_lower = header.lower()
-        in_section = False
-        for line in lines:
-            if line.strip().lower() == header_lower:
-                in_section = True
-                continue
-            if in_section:
-                if line.strip().startswith("##"):
-                    return False  # reached next section without content
-                if line.strip():
-                    return True  # found non-blank content
-        return False
-
-    section_errors = []
-    required_sections = ["## Goal", "## Scope", "## Acceptance Criteria", "## References"]
-    for tf in ticket_files:
-        lines = tf.read_text(encoding="utf-8").splitlines()
-        for section in required_sections:
-            if not _section_is_non_empty(lines, section):
-                section_errors.append(f"  {tf.name}: missing or empty '{section}' section")
-
-    if section_errors:
-        msg = "Ticket file(s) failed section validation:\n" + "\n".join(section_errors)
-        fail_epic_stage(epic, "epic_breakdown_complete", msg)
-        raise ValueError(msg)
+    ticket_files = validate_breakdown(epic, "epic_breakdown_complete")
 
     set_epic_artifact(epic, "epic_story_map", epic_story_map_path(epic))
     set_epic_artifact(epic, "epic_story_status", epic_story_status_path(epic))
@@ -832,20 +775,51 @@ def epic_generate_tickets(epic: str, init_dirs: bool = False) -> None:
         )
         sys.exit(1)
 
+    if breakdown_review_started(epic):
+        decision = None
+        report = epic_breakdown_review_report_path(epic)
+        try:
+            if report.exists():
+                decision = json.loads(read(report)).get("decision")
+        except Exception:
+            pass
+        if decision != "approve":
+            print(
+                "[ERROR] Breakdown review is not approved "
+                f"(decision: {decision or 'none'}). Finish the breakdown review/fix loop first.",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+    else:
+        print("[WARN] no breakdown review recorded for this epic; generating tickets anyway.")
+
+    config = load_project_config()
+    configured = set(config.get("domains", {}))
+
     created = skipped = errors = 0
     for tf in ticket_files:
         ticket_id = tf.stem
         run_ticket = f"{epic}-{ticket_id}"
         target = input_file(run_ticket)
+        content = tf.read_text(encoding="utf-8")
 
         if target.exists() and target.read_text(encoding="utf-8").strip():
-            print(f"[SKIP] {ticket_id}")
+            if target.read_text(encoding="utf-8").strip() != content.strip():
+                print(f"[STALE] {ticket_id}: run input.md differs from ticket file")
+            else:
+                print(f"[SKIP] {ticket_id}")
             skipped += 1
             continue
 
         try:
-            content = tf.read_text(encoding="utf-8")
-            init_ticket(run_ticket, content)
+            domains = []
+            for value in parse_ticket_domains(content):
+                if configured and value not in configured:
+                    print(f"[WARN] {ticket_id}: unknown domain '{value}' dropped")
+                else:
+                    domains.append(value)
+            primary = domains[0] if domains else config.get("default_domain", "backend")
+            init_ticket(run_ticket, content, domain=primary, domains=domains)
             print(f"[OK] {ticket_id}")
             created += 1
         except Exception as e:

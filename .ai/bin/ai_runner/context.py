@@ -69,6 +69,14 @@ def get_ticket_domain(ticket: str) -> str:
     return load_project_config().get("default_domain", "backend")
 
 
+def get_ticket_domains(ticket: str) -> List[str]:
+    """All domains of a ticket run, primary first."""
+    domains = load_status(ticket).get("domains")
+    if domains:
+        return list(domains)
+    return [get_ticket_domain(ticket)]
+
+
 def get_domain_config(ticket: str) -> Dict:
     config = load_project_config()
     domain = get_ticket_domain(ticket)
@@ -76,9 +84,14 @@ def get_domain_config(ticket: str) -> Dict:
 
 
 def get_role_skills(ticket: str, role: str) -> List[Path]:
-    domain_cfg = get_domain_config(ticket)
-    skill_paths = domain_cfg.get("skills", {}).get(role, [])
-    return [Path(p) for p in skill_paths]
+    config = load_project_config()
+    seen: List[str] = []
+    for domain in get_ticket_domains(ticket):
+        domain_cfg = config.get("domains", {}).get(domain, {})
+        for p in domain_cfg.get("skills", {}).get(role, []):
+            if p not in seen:
+                seen.append(p)
+    return [Path(p) for p in seen]
 
 
 def load_skill_contents(paths: List[Path]) -> str:
@@ -268,13 +281,19 @@ def build_vault_context(domains: List[str], role: str) -> str:
 def build_project_context(ticket: str) -> str:
     config = load_project_config()
     domain = get_ticket_domain(ticket)
-    domain_cfg = config.get("domains", {}).get(domain, {})
+    domains = get_ticket_domains(ticket)
     lines = [
         f"Project: {config.get('project_name', 'Unknown')}",
         f"Domain: {domain}",
-        f"Base branch: {get_base_branch()}",
     ]
-    paths = domain_cfg.get("paths", [])
+    if len(domains) > 1:
+        lines.append(f"Domains: {', '.join(domains)}")
+    lines.append(f"Base branch: {get_base_branch()}")
+    paths: List[str] = []
+    for d in domains:
+        for p in config.get("domains", {}).get(d, {}).get("paths", []):
+            if p not in paths:
+                paths.append(p)
     if paths:
         lines.append("Relevant paths:")
         for p in paths:

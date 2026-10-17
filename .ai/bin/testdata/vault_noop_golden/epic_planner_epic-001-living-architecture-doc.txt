@@ -17,6 +17,7 @@ Generate clean, structured backlog of work items as markdown files.
 
 Read:
 
+- `.ai/epics/<EPIC>/input/epic_input.md`
 - `.ai/epics/<EPIC>/analysis/epic_analysis.md`
 - `.ai/epics/<EPIC>/design/epic_design.md`
 
@@ -59,12 +60,16 @@ Include:
 
 ## 2. Tickets (IMPORTANT)
 
+Each ticket is one independently verifiable feature slice, delivered across every domain it needs. "Done" means a manager can verify the feature on dev/stage.
+
 Each ticket must:
 
-- Be independently executable
-- Be small enough (1–3 days typical)
+- Deliver one independently verifiable feature/outcome, spanning all needed domains
 - Have clear scope
 - Not overlap with others
+- Be verifiable by a manager on dev/stage via its `## Verification` steps
+
+Sizing is qualitative. Do not estimate durations and do not target a ticket count; judge size only by "one independently verifiable feature/outcome per ticket, spanning all needed domains".
 
 Ticket filename format: `<EPIC-ID>-<STORY-ID>-<slug>.md`
 - `<EPIC-ID>` — uppercase epic identifier (e.g. `EPIC-001`)
@@ -97,7 +102,7 @@ Each file must follow:
 
 ## Acceptance Criteria
 
-- ...
+- ... (end-to-end behavior of the feature, at least two testable criteria)
 - ...
 
 ## Dependencies
@@ -108,11 +113,31 @@ Each file must follow:
 
 <number>
 
-## Domain
+## Domains
 
-Must be set to one of the domains listed in the project context (e.g. backend, frontend, workflow).
-A ticket may only belong to a single domain. Use cross-cutting notes to explain
-integrations when a ticket touches multiple domains.
+One line, comma-separated, primary domain first (e.g. `backend, frontend, data`).
+Every value must be one of the domains listed in the project context. A ticket may list
+several domains when the feature needs them.
+
+## Domain Checklist
+
+One `### <domain>` subsection per listed domain, each with concrete `- [ ]` items
+(what to build or change in that domain). Required when more than one domain is listed;
+optional for a single-domain ticket.
+
+### backend
+
+- [ ] ...
+
+### frontend
+
+- [ ] ...
+
+## Verification
+
+Steps a manager can run on dev/stage, each with the expected observable result
+(UI path, API call, query or dashboard, log line, config flag), including data or
+migration checks where relevant. Required in every ticket.
 
 ## Notes
 
@@ -177,7 +202,8 @@ Rules:
 
 # ⚠️ Rules
 
-- Do NOT create giant tickets
+- Do NOT create god tickets (several unrelated features)
+- Do NOT split one feature by domain, layer, or file
 - Do NOT overlap scopes
 - Respect sequencing
 - Ensure AC is testable
@@ -190,10 +216,13 @@ Rules:
 
 Before finalising output, verify each:
 
-- [ ] Every ticket estimable within 1–3 days
+- [ ] Each ticket delivers one independently verifiable outcome a manager can check on dev/stage
+- [ ] No ticket exists only for one domain or layer of a feature delivered elsewhere
 - [ ] No two tickets share overlapping scope (same files, same API endpoints, same data model fields)
 - [ ] Every ticket has at least two concrete, testable Acceptance Criteria
-- [ ] Every ticket has exactly one `## Domain` value from configured domain list
+- [ ] Every ticket lists its `## Domains` from the configured domain list, primary first
+- [ ] Every multi-domain ticket has a `### <domain>` checklist per listed domain
+- [ ] Every ticket has a runnable `## Verification` section
 - [ ] `## Goal` and `## Scope` are distinct and non-empty in every ticket
 - [ ] No ticket title is vague action phrase (e.g. "Improve X", "Refactor Y", "Handle Z")
 
@@ -204,8 +233,9 @@ Before finalising output, verify each:
 Do NOT produce:
 
 - **God tickets** — single ticket covering multiple features or entire subsystem
-- **Layer-split tickets** — separate tickets for "Write DB migration", "Write service layer", "Write API endpoint" when all deliver same feature with no independent user value
-- **Placeholder ACs** — criteria like "works correctly", "is tested", "handles errors" that are not verifiable
+- **Per-domain tickets** — separate tickets for the backend part, the frontend part, and the data part of the same feature
+- **Per-layer tickets** — separate tickets for "Write DB migration", "Write service layer", "Write API endpoint" when all deliver the same feature
+- **Placeholder ACs and verification** — criteria like "works correctly", "is tested", "handles errors" that are not verifiable
 - **Overlapping scope** — two tickets touching same module for different reasons without explicit sequencing or dependency declaration
 
 ---
@@ -216,7 +246,7 @@ If concern detected during self-review that cannot be fully resolved, add `## Qu
 
 Each flag entry must include:
 - Affected ticket ID (e.g. `US-003`)
-- Concern type (e.g. overlap, oversize, vague AC)
+- Concern type (e.g. overlap, oversize, vague AC, domain fragment)
 - Severity level: `high`, `medium`, or `low`
 
 Example:
@@ -224,10 +254,16 @@ Example:
 ## Quality Notes
 
 - US-003 | overlap | medium — shares authentication scope with US-001; ensure sequencing is respected
-- US-007 | oversize | high — covers both data model and API layer; consider splitting
+- US-007 | domain fragment | high — exists only for the API layer of a feature whose UI ships in US-008
 ```
 
-Omit `## Quality Notes` entirely if no concerns exist.
+Add a `## Quality Notes` entry when:
+
+- a ticket was kept separate from an adjacent one, or merged with one, against the sizing rules and the reason is not obvious from its Goal
+- a ticket bundles more than one independently verifiable outcome and was kept anyway
+- a ticket exists only for one domain or layer of a feature that other tickets also deliver
+
+Omit `## Quality Notes` entirely if none of these apply.
 
 ---
 
@@ -235,21 +271,22 @@ Omit `## Quality Notes` entirely if no concerns exist.
 
 Split by:
 
-- feature slices
-- technical boundaries
-- risk areas
-- integration points
+- independently verifiable, independently valuable feature slices
+- dependency or risk boundaries that need separate sign-off
 
 NOT by:
 
-- arbitrary layers
+- domain, layer, or file
 - vague "refactor everything"
+
+Shared foundations (schema, infrastructure, flags) become their own ticket only when two or more feature tickets depend on them AND the foundation has its own Verification; otherwise fold them into the first feature ticket that consumes them.
 
 ---
 
 # ✅ Success Criteria
 
 - Tickets can be directly imported into Jira/Shortcut
+- A manager can verify each ticket's feature on dev/stage from its `## Verification` section
 - Each ticket is clear and actionable
 - Dependencies and order are understandable
 - No major overlap between tickets

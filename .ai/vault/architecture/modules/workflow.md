@@ -10,11 +10,11 @@ generation for every agent role, output verification, and stage routing. Everyth
 
 - `.ai/bin/ai_run.py` — CLI entry point + re-export facade (`main`); no logic (ADR-002).
 - `.ai/bin/ai_runner/` — logic package: constants, paths, state, context, prompts, stage modules
-  (architect, dev_qa, distill, arch, epic), steps, routing, wezterm, autoflow, cli.
+  (architect, dev_qa, distill, arch, epic, `epic_review_stages` = analysis/breakdown review + fix gates, `epic_breakdown_checks` = `validate_breakdown`, domain parsing, review-started/seeded-run helpers), steps, routing, wezterm, autoflow, cli.
 - `.ai/step_models.json` — project-owned per-`*-prepare`-step model/effort; scaffolded by `install.py`
   from `.ai/templates/step_models.template.json`; read by `get_step_model` (`ai_runner/steps.py`).
 - `.ai/agents/*.md` — role instruction files (architect, architect_reviewer, developer, reviewer,
-  qa, epic_analyst, epic_designer, epic_reviewer, epic_planner, arch_init) injected verbatim into
+  qa, epic_analyst, epic_analysis_reviewer, epic_designer, epic_reviewer, epic_planner, epic_breakdown_reviewer, arch_init) injected verbatim into
   generated prompts.
 - `.ai/project_config.json` — project name, base branch, engine default, vault settings, and
   `domains.<name>.{paths, skills}` used to scope prompts per domain/role.
@@ -49,6 +49,8 @@ Every ticket/epic stage follows the same prepare → act → complete shape:
 QA/report files to compute the next step, so `next --run` / `epic-next --run` can drive the whole
 pipeline, including fix loops (architect fix, dev fix, epic design fix) triggered by
 `request_changes`/`block`/`fail` decisions.
+
+Epic flow (ADR-003, proposed): Analyst → Analysis Reviewer → Designer → Design Reviewer → ADR distill → Planner → Breakdown Reviewer, each with a fix loop. `epic-generate-tickets` seeds `domain` + optional `domains` into ticket `status.json`; ticket prompts union paths/skills/vault modules across domains. Tickets are feature slices (`## Domains`, `## Verification`, `## Domain Checklist` if multi-domain).
 
 The `arch-init` command is the one project-level, ticket-less exception: it reuses this same
 prepare/act/complete + status.json machinery via a fixed sentinel ticket id (`_arch-init`,
@@ -102,3 +104,5 @@ from `status.json` history (cap 2, then ask operator).
 - Import order is acyclic: constants -> paths -> state -> context -> prompts -> stage modules -> routing -> wezterm/autoflow -> cli. Put new code in the owning module; do not re-grow `ai_run.py`.
 - A function moved between `ai_runner` modules must stay re-exported from `ai_run`; patch the defining module, not the facade.
 - Never hardcode model/effort in Python; `step_models.json` keys must equal `KNOWN_PREPARE_STEPS` (test-enforced). `ai_wrap.py` stays read-only but calls `ai_run.get_step_model`.
+- `epic-generate-tickets` needs an approved breakdown review once any breakdown review/fix exists (warn-only otherwise); `epic-breakdown-complete`/`-fix-complete` share `validate_breakdown` (tracker ids <-> ticket files one-to-one); `epic_next_action` never returns `done` before breakdown review approval; no numeric sizing in prompts.
+- Multi-domain tickets: distill refreshes only the primary domain's module doc.

@@ -37,6 +37,11 @@ Decision guidance:
 - request_changes: meaningful gaps, fixable within current approach
 - block: severe flaws, dangerous regressions, or fundamentally misaligned
 
+Checklist and verification coverage:
+
+- Read the ticket `input.md`; when it has a `## Domain Checklist` or `## Verification` section, check that every checklist item is implemented in the diff and every verification step has evidence in `implementation_report.md` under `## Verification Evidence`
+- Report uncovered items as issues; a missing high-impact item means `request_changes`
+
 Comment check (scan every file in changed_files.txt in full, not only the added lines in git_diff.patch, so pre-existing comments in touched files are covered):
 
 - Flag comments that reference ticket/epic/story/tracker IDs, workflow artifact labels (AC/A/U/D numbers, `assumptions.md`, `design_note.md`), review/fix rounds, or narrate the change ("now", "previously", "widened vs.")

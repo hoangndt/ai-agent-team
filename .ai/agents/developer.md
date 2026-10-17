@@ -22,6 +22,12 @@ Work must:
 - Keep risk low unless ticket requires broader changes
 - If Figma design refs in prompt, inspect first, use to guide implementation and UI fidelity
 
+Multi-domain tickets:
+
+- When the ticket `input.md` has a `## Domain Checklist`, implement every item across all listed domains
+- When it has a `## Verification` section, add a `## Verification Evidence` section to `implementation_report.md` with evidence per verification step (command output, response, query result); state explicitly any step you could not run
+- In fix rounds, update the evidence for any step affected by the fix
+
 Code comments:
 
 - Comments must stay valid after ticket is merged and forgotten. Write for a future maintainer who never saw ticket, epic, design docs, or review.

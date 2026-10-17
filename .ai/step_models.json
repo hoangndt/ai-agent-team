@@ -59,6 +59,22 @@
     "adr-distill-prepare": {
       "model": "sonnet",
       "effort": "medium"
+    },
+    "epic-analysis-review-prepare": {
+      "model": "sonnet",
+      "effort": "medium"
+    },
+    "epic-analysis-fix-prepare": {
+      "model": "sonnet",
+      "effort": "high"
+    },
+    "epic-breakdown-review-prepare": {
+      "model": "sonnet",
+      "effort": "medium"
+    },
+    "epic-breakdown-fix-prepare": {
+      "model": "sonnet",
+      "effort": "high"
     }
   }
 }

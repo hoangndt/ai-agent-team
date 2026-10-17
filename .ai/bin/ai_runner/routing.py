@@ -8,9 +8,13 @@ from .paths import (
     adr_distill_prompt_path, architect_fix_prompt_path, architect_prompt_path,
     architect_review_prompt_path, architect_review_report_path, design_note_path,
     dev_fix_prompt_path, dev_prompt_path, distill_prompt_path, epic_analysis_path,
-    epic_analysis_prompt_path, epic_breakdown_prompt_path, epic_design_fix_prompt_path,
-    epic_design_path, epic_design_prompt_path, epic_review_prompt_path,
-    epic_review_report_path, epic_story_map_path, epic_tickets_dir,
+    epic_analysis_fix_prompt_path, epic_analysis_prompt_path,
+    epic_analysis_review_prompt_path, epic_analysis_review_report_path,
+    epic_breakdown_fix_prompt_path, epic_breakdown_prompt_path,
+    epic_breakdown_review_prompt_path, epic_breakdown_review_report_path,
+    epic_design_fix_prompt_path, epic_design_path, epic_design_prompt_path,
+    epic_review_prompt_path, epic_review_report_path, epic_story_map_path,
+    epic_tickets_dir,
     implementation_report_path, qa_prompt_path, qa_report_path, review_prompt_path,
     review_report_path, task_spec_path, vault_cap_exceeded_path,
 )
@@ -34,6 +38,12 @@ from .epic_stages import (
     epic_design_fix_prepare, epic_design_prepare, epic_review_complete,
     epic_review_prepare,
 )
+from .epic_review_stages import (
+    epic_analysis_fix_complete, epic_analysis_fix_prepare,
+    epic_analysis_review_complete, epic_analysis_review_prepare,
+    epic_breakdown_fix_complete, epic_breakdown_fix_prepare,
+    epic_breakdown_review_complete, epic_breakdown_review_prepare,
+)
 from .steps import preflight_step_models
 from .wezterm import spawn_ai_wezterm
 
@@ -47,8 +57,38 @@ def epic_current_review_decision(epic: str) -> Optional[str]:
     return None
 
 
+def _epic_review_gate_action(
+    stage_prefix: str, step_prefix: str, report: Path, current_stage: str
+) -> Optional[str]:
+    """Next step of an analysis/breakdown review gate, or None once approved.
+
+    Fix stages are checked first because fix-prepare deletes the report. A freshly
+    written report is routed to review-complete before its decision is acted on, since
+    review-complete is what validates the decision and builds the fix context.
+    """
+    if current_stage == f"{stage_prefix}_fix_prepare":
+        return f"{step_prefix}-fix-complete"
+    if current_stage == f"{stage_prefix}_fix_complete":
+        return f"{step_prefix}-review-prepare"
+    if not report.exists() or not read(report).strip():
+        return f"{step_prefix}-review-prepare"
+    if current_stage == f"{stage_prefix}_review_prepare":
+        return f"{step_prefix}-review-complete"
+    try:
+        decision = json.loads(read(report)).get("decision")
+    except Exception:
+        decision = None
+    if decision in {"request_changes", "block"}:
+        return f"{step_prefix}-fix-prepare"
+    if decision == "approve":
+        return None
+    return f"{step_prefix}-review-prepare"
+
+
 def epic_next_action(epic: str) -> str:
-    current_stage = load_epic_status(epic).get("current_stage", "")
+    status = load_epic_status(epic)
+    current_stage = status.get("current_stage", "")
+    stage_failed = status.get("state") == "failed"
     review_decision = epic_current_review_decision(epic)
 
     # Analysis
@@ -60,8 +100,21 @@ def epic_next_action(epic: str) -> str:
     if current_stage == "epic_analysis_prepare":
         return "epic-analysis-complete"
 
+    # Analysis review gate: only while design has not started, so epics already in or
+    # past design are never pulled back.
+    design_missing = (
+        not epic_design_path(epic).exists() or not read(epic_design_path(epic)).strip()
+    )
+    if design_missing and not epic_design_prompt_path(epic).exists():
+        gate = _epic_review_gate_action(
+            "epic_analysis", "epic-analysis", epic_analysis_review_report_path(epic),
+            current_stage,
+        )
+        if gate is not None:
+            return gate
+
     # Design
-    if not epic_design_path(epic).exists() or not read(epic_design_path(epic)).strip():
+    if design_missing:
         if epic_design_prompt_path(epic).exists():
             return "epic-design-complete"
         return "epic-design-prepare"
@@ -107,8 +160,25 @@ def epic_next_action(epic: str) -> str:
                 return "epic-breakdown-complete"
             return "epic-breakdown-prepare"
 
-        if list(epic_tickets_dir(epic).glob("*.md")):
-            return "done"
+        # Story map written but complete not run yet: never skip validation.
+        if current_stage == "epic_breakdown_prepare":
+            return "epic-breakdown-complete"
+
+        if not list(epic_tickets_dir(epic).glob("*.md")):
+            return "epic-breakdown-complete"
+
+        # A failed validation is retried before any review is prepared.
+        if stage_failed and current_stage in {
+            "epic_breakdown_complete", "epic_breakdown_fix_complete",
+        }:
+            return current_stage.replace("_", "-")
+
+        gate = _epic_review_gate_action(
+            "epic_breakdown", "epic-breakdown", epic_breakdown_review_report_path(epic),
+            current_stage,
+        )
+        if gate is not None:
+            return gate
 
     return "done"
 
@@ -127,6 +197,14 @@ def run_named_epic_step(epic: str, step: str) -> None:
         "epic-breakdown-complete": epic_breakdown_complete,
         "adr-distill-prepare": adr_distill_prepare,
         "adr-distill-complete": adr_distill_complete,
+        "epic-analysis-review-prepare": epic_analysis_review_prepare,
+        "epic-analysis-review-complete": epic_analysis_review_complete,
+        "epic-analysis-fix-prepare": epic_analysis_fix_prepare,
+        "epic-analysis-fix-complete": epic_analysis_fix_complete,
+        "epic-breakdown-review-prepare": epic_breakdown_review_prepare,
+        "epic-breakdown-review-complete": epic_breakdown_review_complete,
+        "epic-breakdown-fix-prepare": epic_breakdown_fix_prepare,
+        "epic-breakdown-fix-complete": epic_breakdown_fix_complete,
     }
     if step == "done":
         print("Epic looks complete. Review the story map and ticket files.")
@@ -143,6 +221,10 @@ _EPIC_PREPARE_STEP_PROMPT: Dict[str, object] = {
     "epic-review-prepare": epic_review_prompt_path,
     "epic-breakdown-prepare": epic_breakdown_prompt_path,
     "adr-distill-prepare": adr_distill_prompt_path,
+    "epic-analysis-review-prepare": epic_analysis_review_prompt_path,
+    "epic-analysis-fix-prepare": epic_analysis_fix_prompt_path,
+    "epic-breakdown-review-prepare": epic_breakdown_review_prompt_path,
+    "epic-breakdown-fix-prepare": epic_breakdown_fix_prompt_path,
 }
 
 
@@ -376,6 +458,10 @@ _EPIC_PREPARE_TO_COMPLETE: Dict[str, str] = {
     "epic-review-prepare":     "epic-review-complete",
     "epic-breakdown-prepare":  "epic-breakdown-complete",
     "adr-distill-prepare":     "adr-distill-complete",
+    "epic-analysis-review-prepare":  "epic-analysis-review-complete",
+    "epic-analysis-fix-prepare":     "epic-analysis-fix-complete",
+    "epic-breakdown-review-prepare": "epic-breakdown-review-complete",
+    "epic-breakdown-fix-prepare":    "epic-breakdown-fix-complete",
 }
 
 

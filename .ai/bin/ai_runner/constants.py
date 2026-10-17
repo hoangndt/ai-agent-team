@@ -61,6 +61,10 @@ KNOWN_SUBCOMMANDS = frozenset({
     "epic-review-prepare", "epic-review-complete",
     "epic-design-fix-prepare", "epic-design-fix-complete",
     "epic-breakdown-prepare", "epic-breakdown-complete",
+    "epic-analysis-review-prepare", "epic-analysis-review-complete",
+    "epic-analysis-fix-prepare", "epic-analysis-fix-complete",
+    "epic-breakdown-review-prepare", "epic-breakdown-review-complete",
+    "epic-breakdown-fix-prepare", "epic-breakdown-fix-complete",
     "adr-distill-prepare", "adr-distill-complete",
     "epic-generate-tickets",
     "ticket", "epic",
@@ -76,6 +80,8 @@ KNOWN_PREPARE_STEPS = frozenset({
     "dev-prepare", "dev-fix-prepare", "review-prepare", "qa-prepare", "distill-prepare",
     "epic-analysis-prepare", "epic-design-prepare", "epic-design-fix-prepare",
     "epic-review-prepare", "epic-breakdown-prepare", "adr-distill-prepare",
+    "epic-analysis-review-prepare", "epic-analysis-fix-prepare",
+    "epic-breakdown-review-prepare", "epic-breakdown-fix-prepare",
 })
 
 # Sentinel ticket id reused for arch-init's per-run status/prompt machinery.
