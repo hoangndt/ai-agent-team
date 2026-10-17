@@ -93,7 +93,7 @@ def epic_next_action(epic: str) -> str:
         # ADR distill (this branch is what auto-triggers it once the review is
         # approved — see the write-path comment above) runs before breakdown.
         # Guarded on vault_root() so vault-less epics skip straight to breakdown
-        # (FC-1/backward-compat).
+        # (backward-compatible).
         if vault_root() is not None:
             if not adr_distill_prompt_path(epic).exists():
                 return "adr-distill-prepare"

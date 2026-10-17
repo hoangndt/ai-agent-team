@@ -348,7 +348,7 @@ def _epic_stage_completed_in_history(epic: str, stage: str) -> bool:
 def adr_distill_prepare(epic: str) -> None:
     root = vault_root()
     if root is None:
-        # Vault-disabled contract (FC-1): no-op without mutating current_stage or
+        # Vault-disabled contract: no-op without mutating current_stage or
         # artifacts, mirroring ticket-side distill_prepare.
         print(f"[SKIP] Vault disabled; adr_distill_prepare no-op for {epic}")
         return
@@ -436,9 +436,8 @@ def adr_distill_complete(epic: str) -> None:
     start_id = int(start_id_raw)
 
     # Selection is by filename id (>= start_id), not by each file's own `epic:`
-    # field (fix for review finding data_flow/high) — a missing/malformed `epic:`
-    # can no longer hide an ADR from verification (FC-3). Uses the same
-    # `^ADR-(\d{3})` regex next_adr_id() scans with, so ADR-NNN-template.md is
+    # field, so a missing/malformed `epic:` cannot hide an ADR from verification.
+    # Uses the same `^ADR-(\d{3})` regex next_adr_id() scans with, so ADR-NNN-template.md is
     # skipped the same way.
     decisions_dir = root / "architecture" / "decisions"
     selected: List[Path] = []
@@ -451,7 +450,7 @@ def adr_distill_complete(epic: str) -> None:
                 selected.append(path)
 
     if not selected:
-        # FC-2: zero epic-linked ADRs is pass-with-note, not a failure.
+        # Zero epic-linked ADRs is pass-with-note, not a failure.
         complete_epic_stage(
             epic, "adr_distill_complete", "No new ADRs written for this epic; pass-with-note."
         )
