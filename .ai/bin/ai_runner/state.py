@@ -97,9 +97,9 @@ def get_base_branch() -> str:
     return cfg.get("git", {}).get("base_branch", "main")
 
 
-def init_status(ticket: str, domain: str) -> Dict:
+def init_status(ticket: str, domain: str, domains: Optional[List[str]] = None) -> Dict:
     ts = now()
-    return {
+    status: Dict = {
         "ticket": ticket,
         "domain": domain,
         "current_stage": "init",
@@ -109,6 +109,9 @@ def init_status(ticket: str, domain: str) -> Dict:
         "history": [{"stage": "init", "status": "done", "time": ts}],
         "runner": {"mode": "file_referenced_prompts", "last_command": None},
     }
+    if domains and len(domains) > 1:
+        status["domains"] = list(domains)
+    return status
 
 
 def init_epic_status(epic: str, domains: List[str]) -> Dict:
@@ -240,7 +243,9 @@ def ensure_non_empty_epic_files(paths: List[Path], stage: str, epic: str) -> Non
         raise FileNotFoundError(f"Missing or empty files: {', '.join(missing)}")
 
 
-def init_ticket(ticket: str, requirement: str, domain: str = "") -> None:
+def init_ticket(
+    ticket: str, requirement: str, domain: str = "", domains: Optional[List[str]] = None
+) -> None:
     ensure_base_dirs()
     config = load_project_config()
     resolved_domain = domain or config.get("default_domain", "backend")
@@ -248,9 +253,12 @@ def init_ticket(ticket: str, requirement: str, domain: str = "") -> None:
     ensure_ticket_dirs(ticket)
 
     write(input_file(ticket), requirement.strip() + "\n")
-    save_status(ticket, init_status(ticket, resolved_domain))
+    save_status(ticket, init_status(ticket, resolved_domain, domains))
     set_artifact(ticket, "input", input_file(ticket))
-    print(f"[OK] Initialized {ticket} at {run_path(ticket)} (domain={resolved_domain})")
+    label = f"domain={resolved_domain}"
+    if domains and len(domains) > 1:
+        label = f"domains={','.join(domains)}"
+    print(f"[OK] Initialized {ticket} at {run_path(ticket)} ({label})")
 
 
 def ensure_arch_init_status() -> None:

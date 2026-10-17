@@ -6,6 +6,8 @@ from typing import Dict, Optional
 
 from .paths import (
     architect_fix_context_path, architect_review_report_path,
+    epic_analysis_review_fix_context_path, epic_analysis_review_report_path,
+    epic_breakdown_review_fix_context_path, epic_breakdown_review_report_path,
     epic_review_fix_context_path, epic_review_report_path, qa_fix_context_path,
     qa_report_path, review_fix_context_path, review_report_path,
 )
@@ -13,7 +15,7 @@ from .state import read, set_artifact, set_epic_artifact, write
 from .context import (
     build_epic_project_context, build_figma_context, build_project_context,
     build_vault_context, get_effective_role_skills, get_epic_domains,
-    get_epic_role_skills, get_ticket_domain, load_skill_contents, require_agent_file,
+    get_epic_role_skills, get_ticket_domains, load_skill_contents, require_agent_file,
 )
 
 
@@ -46,7 +48,7 @@ def build_role_prompt(ticket: str, role: str, task_instruction: str) -> str:
         project_context,
     ]
 
-    vault_context = build_vault_context([get_ticket_domain(ticket)], role)
+    vault_context = build_vault_context(get_ticket_domains(ticket), role)
     if vault_context:
         parts.extend(["", vault_context])
 
@@ -211,6 +213,8 @@ def build_epic_role_prompt(epic: str, role: str, task_instruction: str) -> str:
         "epic_analyst": "epic_analyst.md",
         "epic_designer": "epic_designer.md",
         "epic_reviewer": "epic_reviewer.md",
+        "epic_analysis_reviewer": "epic_analysis_reviewer.md",
+        "epic_breakdown_reviewer": "epic_breakdown_reviewer.md",
         "epic_planner": "epic_planner.md",
         "distiller": "distiller.md",
     }
@@ -239,8 +243,26 @@ def build_epic_role_prompt(epic: str, role: str, task_instruction: str) -> str:
     return "\n".join(parts) + "\n"
 
 
-def build_epic_review_fix_context(epic: str) -> Optional[Path]:
-    path = epic_review_report_path(epic)
+# phase -> (report path, fix-context path, artifact key, label)
+_EPIC_REVIEW_PHASES = {
+    "design": (
+        epic_review_report_path, epic_review_fix_context_path,
+        "epic_review_fix_context", "epic design",
+    ),
+    "analysis": (
+        epic_analysis_review_report_path, epic_analysis_review_fix_context_path,
+        "epic_analysis_review_fix_context", "epic analysis",
+    ),
+    "breakdown": (
+        epic_breakdown_review_report_path, epic_breakdown_review_fix_context_path,
+        "epic_breakdown_review_fix_context", "epic breakdown",
+    ),
+}
+
+
+def build_epic_review_fix_context(epic: str, phase: str = "design") -> Optional[Path]:
+    report_fn, context_fn, artifact_key, label = _EPIC_REVIEW_PHASES[phase]
+    path = report_fn(epic)
     if not path.exists() or not read(path).strip():
         return None
 
@@ -263,7 +285,7 @@ def build_epic_review_fix_context(epic: str) -> Optional[Path]:
     lines = [
         "# Epic Review Fix Context",
         "",
-        "Use this file to fix epic design review findings.",
+        f"Use this file to fix {label} review findings.",
         "",
         f"Reviewer decision: {review.get('decision', 'unknown')}",
         "",
@@ -283,7 +305,7 @@ def build_epic_review_fix_context(epic: str) -> Optional[Path]:
     if summary:
         lines.extend(["## Reviewer Summary", summary, ""])
 
-    ctx_path = epic_review_fix_context_path(epic)
+    ctx_path = context_fn(epic)
     write(ctx_path, "\n".join(lines).strip() + "\n")
-    set_epic_artifact(epic, "epic_review_fix_context", ctx_path)
+    set_epic_artifact(epic, artifact_key, ctx_path)
     return ctx_path

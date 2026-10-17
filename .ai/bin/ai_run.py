@@ -32,13 +32,18 @@ from ai_runner.paths import (  # noqa: F401
     architect_review_prompt_path, architect_review_report_path, assumptions_path,
     design_note_path, dev_dir, dev_fix_prompt_path, dev_prompt_path, distill_dir,
     distill_prompt_path, epic_analysis_dir, epic_analysis_path,
-    epic_analysis_prompt_path, epic_breakdown_dir, epic_breakdown_prompt_path,
-    epic_design_dir, epic_design_fix_prompt_path, epic_design_path,
+    epic_analysis_fix_prompt_path, epic_analysis_prompt_path,
+    epic_analysis_review_fix_context_path, epic_analysis_review_prompt_path,
+    epic_analysis_review_report_path, epic_breakdown_dir,
+    epic_breakdown_fix_prompt_path, epic_breakdown_prompt_path,
+    epic_breakdown_review_fix_context_path, epic_breakdown_review_prompt_path,
+    epic_breakdown_review_report_path, epic_design_dir, epic_design_fix_prompt_path, epic_design_path,
     epic_design_prompt_path, epic_fix_dir, epic_input_dir, epic_input_file, epic_path,
     epic_review_dir, epic_review_fix_context_path, epic_review_prompt_path,
     epic_review_report_path, epic_status_file, epic_story_map_path,
     epic_story_status_path, epic_tickets_dir, fix_dir, implementation_report_path,
     input_dir, input_file, now, previous_architect_review_path,
+    previous_epic_analysis_review_path, previous_epic_breakdown_review_path,
     previous_epic_review_path, previous_qa_report_path, previous_review_report_path,
     project_config_path, qa_dir, qa_fix_context_path, qa_prompt_path, qa_report_path,
     review_dir, review_fix_context_path, review_prompt_path, review_report_path,
@@ -58,7 +63,7 @@ from ai_runner.context import (  # noqa: F401
     build_vault_context, _cap_lines, dedupe_paths, ensure_non_empty_files,
     ensure_section_present, extract_figma_urls, file_ref_list, get_domain_config,
     get_effective_role_skills, get_epic_domain, get_epic_domains, get_epic_role_skills,
-    get_figma_skill_paths, get_role_skills, get_ticket_domain, get_ticket_figma_urls,
+    get_figma_skill_paths, get_role_skills, get_ticket_domain, get_ticket_domains, get_ticket_figma_urls,
     load_skill_contents, next_adr_id, read_vault_modules, read_vault_overview,
     require_agent_file, vault_root,
 )
@@ -87,10 +92,21 @@ from ai_runner.arch_stages import (  # noqa: F401
 from ai_runner.epic_stages import (  # noqa: F401
     adr_distill_complete, adr_distill_prepare, _adr_frontmatter_errors,
     _ADR_VALID_STATUSES, epic_analysis_complete, epic_analysis_prepare,
-    epic_breakdown_complete, epic_breakdown_prepare, epic_design_complete,
+    breakdown_ticket_rules, epic_breakdown_complete, epic_breakdown_prepare,
+    epic_design_complete,
     epic_design_fix_complete, epic_design_fix_prepare, epic_design_prepare,
     epic_generate_tickets, epic_init, epic_review_complete, epic_review_prepare,
     _epic_stage_completed_in_history, _parse_adr_frontmatter,
+)
+from ai_runner.epic_breakdown_checks import (  # noqa: F401
+    breakdown_review_started, parse_ticket_domains, seeded_ticket_runs,
+    validate_breakdown,
+)
+from ai_runner.epic_review_stages import (  # noqa: F401
+    epic_analysis_fix_complete, epic_analysis_fix_prepare,
+    epic_analysis_review_complete, epic_analysis_review_prepare,
+    epic_breakdown_fix_complete, epic_breakdown_fix_prepare,
+    epic_breakdown_review_complete, epic_breakdown_review_prepare,
 )
 from ai_runner.routing import (  # noqa: F401
     current_outcome, epic_current_review_decision, epic_next_action, epic_next_step,

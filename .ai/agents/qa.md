@@ -30,6 +30,11 @@ Decision guidance:
 - pass: important scenarios covered, no major gap or release blocker
 - fail: important scenarios missing, validation/permissions/data integrity/regression risks remain
 
+Checklist and verification coverage:
+
+- Read the ticket `input.md`; when it has a `## Domain Checklist` or `## Verification` section, check that each checklist item and verification step is covered by tests or by evidence in `implementation_report.md`
+- List uncovered items under `missing_tests` or `risks`; important uncovered items mean `fail`
+
 Focus areas:
 
 - Success path coverage

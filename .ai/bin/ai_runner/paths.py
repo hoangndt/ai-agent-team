@@ -256,3 +256,43 @@ def adr_distill_dir(epic: str) -> Path:
 
 def adr_distill_prompt_path(epic: str) -> Path:
     return adr_distill_dir(epic) / "adr_distill_prompt.md"
+
+
+def epic_analysis_review_prompt_path(epic: str) -> Path:
+    return epic_review_dir(epic) / "epic_analysis_review_prompt.md"
+
+
+def epic_analysis_review_report_path(epic: str) -> Path:
+    return epic_review_dir(epic) / "epic_analysis_review.json"
+
+
+def epic_analysis_fix_prompt_path(epic: str) -> Path:
+    return epic_fix_dir(epic) / "epic_analysis_fix_prompt.md"
+
+
+def epic_analysis_review_fix_context_path(epic: str) -> Path:
+    return epic_fix_dir(epic) / "epic_analysis_review_fix_context.md"
+
+
+def previous_epic_analysis_review_path(epic: str) -> Path:
+    return epic_fix_dir(epic) / "previous_epic_analysis_review.json"
+
+
+def epic_breakdown_review_prompt_path(epic: str) -> Path:
+    return epic_review_dir(epic) / "epic_breakdown_review_prompt.md"
+
+
+def epic_breakdown_review_report_path(epic: str) -> Path:
+    return epic_review_dir(epic) / "epic_breakdown_review.json"
+
+
+def epic_breakdown_fix_prompt_path(epic: str) -> Path:
+    return epic_fix_dir(epic) / "epic_breakdown_fix_prompt.md"
+
+
+def epic_breakdown_review_fix_context_path(epic: str) -> Path:
+    return epic_fix_dir(epic) / "epic_breakdown_review_fix_context.md"
+
+
+def previous_epic_breakdown_review_path(epic: str) -> Path:
+    return epic_fix_dir(epic) / "previous_epic_breakdown_review.json"

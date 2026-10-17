@@ -26,6 +26,12 @@ from .epic_stages import (
     epic_design_prepare, epic_generate_tickets, epic_init, epic_review_complete,
     epic_review_prepare,
 )
+from .epic_review_stages import (
+    epic_analysis_fix_complete, epic_analysis_fix_prepare,
+    epic_analysis_review_complete, epic_analysis_review_prepare,
+    epic_breakdown_fix_complete, epic_breakdown_fix_prepare,
+    epic_breakdown_review_complete, epic_breakdown_review_prepare,
+)
 from .routing import epic_next_step, next_step, show_epic_status, show_status
 from .autoflow import run_epic_autoflow, run_ticket_autoflow
 
@@ -182,6 +188,14 @@ def build_parser() -> argparse.ArgumentParser:
         "epic-design-fix-complete",
         "epic-breakdown-prepare",
         "epic-breakdown-complete",
+        "epic-analysis-review-prepare",
+        "epic-analysis-review-complete",
+        "epic-analysis-fix-prepare",
+        "epic-analysis-fix-complete",
+        "epic-breakdown-review-prepare",
+        "epic-breakdown-review-complete",
+        "epic-breakdown-fix-prepare",
+        "epic-breakdown-fix-complete",
         "adr-distill-prepare",
         "adr-distill-complete",
         "epic-status",
@@ -382,6 +396,22 @@ def main() -> int:
             epic_breakdown_prepare(args.epic)
         elif args.command == "epic-breakdown-complete":
             epic_breakdown_complete(args.epic)
+        elif args.command == "epic-analysis-review-prepare":
+            epic_analysis_review_prepare(args.epic)
+        elif args.command == "epic-analysis-review-complete":
+            epic_analysis_review_complete(args.epic)
+        elif args.command == "epic-analysis-fix-prepare":
+            epic_analysis_fix_prepare(args.epic)
+        elif args.command == "epic-analysis-fix-complete":
+            epic_analysis_fix_complete(args.epic)
+        elif args.command == "epic-breakdown-review-prepare":
+            epic_breakdown_review_prepare(args.epic)
+        elif args.command == "epic-breakdown-review-complete":
+            epic_breakdown_review_complete(args.epic)
+        elif args.command == "epic-breakdown-fix-prepare":
+            epic_breakdown_fix_prepare(args.epic)
+        elif args.command == "epic-breakdown-fix-complete":
+            epic_breakdown_fix_complete(args.epic)
         elif args.command == "adr-distill-prepare":
             adr_distill_prepare(args.epic)
         elif args.command == "adr-distill-complete":

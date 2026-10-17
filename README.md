@@ -200,10 +200,11 @@ Known unknowns (verify once in your environment): whether per-call `effort` is h
 
 ## 4. Epics
 
-An **epic** is a larger feature. The epic pipeline is **planning only** (no code): it analyses, designs and reviews the feature, then breaks it into ticket files that seed the ticket workflow.
+An **epic** is a larger feature. The epic pipeline is **planning only** (no code): it analyses, designs and reviews the feature, then breaks it into feature-slice ticket files that seed the ticket workflow. Analysis, design and breakdown each pass a review gate with its own fix loop.
 
 ```
-epic-init -> Analyst -> Designer -> Reviewer (fix loop) -> ADR distill -> Planner -> epic-generate-tickets
+epic-init -> Analyst -> Analysis Reviewer (fix loop) -> Designer -> Design Reviewer (fix loop)
+          -> ADR distill -> Planner -> Breakdown Reviewer (fix loop) -> epic-generate-tickets
 ```
 
 ```
@@ -211,7 +212,7 @@ epic-init -> Analyst -> Designer -> Reviewer (fix loop) -> ADR distill -> Planne
 /start-epic EPIC-001
 ```
 
-`/start-epic` stops after the breakdown and asks before generating tickets. Then work each story like any ticket, in story-map order (later stories may depend on earlier ones):
+`/start-epic` stops after the approved breakdown review and asks before generating tickets (`epic-generate-tickets` refuses while a breakdown review exists and is not approved). Then work each story like any ticket, in story-map order (later stories may depend on earlier ones):
 
 ```
 /start-ticket EPIC-001-US-001-<slug>
@@ -222,13 +223,21 @@ Epic outputs under `.ai/epics/<EPIC>/`:
 | Stage | Output |
 |---|---|
 | Analysis | `analysis/epic_analysis.md` |
+| Analysis review | `review/epic_analysis_review.json` (`approve` / `request_changes` / `block`) |
+| Analysis fix (on rejection) | corrected `epic_analysis.md`; previous review archived in `fix/` |
 | Design | `design/epic_design.md` |
-| Review | `review/epic_review.json` (`approve` / `request_changes` / `block`) |
+| Design review | `review/epic_review.json` |
 | Design fix (on rejection) | corrected `epic_design.md`; previous review archived in `fix/` |
 | ADR distill (after approve) | architecture decisions in `.ai/vault/architecture/decisions/` |
-| Breakdown | `breakdown/epic_story_map.md` + `breakdown/tickets/US-NNN-<slug>.md` |
+| Breakdown | `breakdown/epic_story_map.md`, `breakdown/epic_story_status.md` + `breakdown/tickets/EPIC-NNN-US-NNN-<slug>.md` |
+| Breakdown review | `review/epic_breakdown_review.json` |
+| Breakdown fix (on rejection) | corrected story map, tracker and tickets; previous review archived in `fix/` |
 
 `--domains` is a comma-separated list; it defaults to all domains in the config.
+
+**Tickets are feature slices.** A ticket is one independently verifiable feature/outcome, delivered across every domain it needs (never split by domain, layer or file). Each ticket lists its `## Domains` (primary first), a `## Domain Checklist` with a `### <domain>` subsection per domain (required when there is more than one), and a `## Verification` section a manager can run on dev/stage. Sizing is qualitative; there are no day estimates or ticket-count targets. `epic-breakdown-complete` checks the ticket shape and that every ticket file has exactly one row in `epic_story_status.md` (and vice versa).
+
+`epic-generate-tickets` seeds each run with `domain` = the primary domain and, for multi-domain tickets, `domains` = the full list, so ticket prompts carry the paths, skills and vault modules of every listed domain. Developer, Reviewer and QA check the checklist and verification items (the Developer records evidence under `## Verification Evidence`). Distill still refreshes only the primary domain's module doc for a multi-domain ticket. Ticket runs that were already seeded are never overwritten; a changed ticket file is reported as `[STALE]`.
 
 ---
 
@@ -272,7 +281,11 @@ Defaults (Opus is used for epic analysis and design; Sonnet elsewhere, effort tu
     "distill-prepare":          { "model": "sonnet", "effort": "medium" },
     "epic-review-prepare":      { "model": "sonnet", "effort": "medium" },
     "epic-breakdown-prepare":   { "model": "sonnet", "effort": "high" },
-    "adr-distill-prepare":      { "model": "sonnet", "effort": "medium" }
+    "adr-distill-prepare":      { "model": "sonnet", "effort": "medium" },
+    "epic-analysis-review-prepare":  { "model": "sonnet", "effort": "medium" },
+    "epic-analysis-fix-prepare":     { "model": "sonnet", "effort": "high" },
+    "epic-breakdown-review-prepare": { "model": "sonnet", "effort": "medium" },
+    "epic-breakdown-fix-prepare":    { "model": "sonnet", "effort": "high" }
   }
 }
 ```
@@ -345,7 +358,7 @@ python3 .ai/bin/ai_run.py epic-generate-tickets EPIC-001 --init-dirs # also crea
 python3 .ai/bin/ai_run.py ticket EPIC-001-US-001-<slug> --auto-flow
 ```
 
-Manual equivalents: `epic-init`, `epic-next <EPIC> [--run|--run-auto]`, `epic-status <EPIC>`, and per-stage `epic-analysis-*`, `epic-design-*`, `epic-review-*`, `epic-design-fix-*`, `adr-distill-*`, `epic-breakdown-*` (each `-prepare` / `-complete`).
+Manual equivalents: `epic-init`, `epic-next <EPIC> [--run|--run-auto]`, `epic-status <EPIC>`, and per-stage `epic-analysis-*`, `epic-analysis-review-*`, `epic-analysis-fix-*`, `epic-design-*`, `epic-review-*` (design review), `epic-design-fix-*`, `adr-distill-*`, `epic-breakdown-*`, `epic-breakdown-review-*`, `epic-breakdown-fix-*` (each `-prepare` / `-complete`).
 
 ### Read-only helper
 

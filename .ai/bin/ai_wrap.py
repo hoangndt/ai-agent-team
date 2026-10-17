@@ -18,7 +18,10 @@ runner's `*-complete` step will pass. These completes also validate content:
 
     dev-complete, dev-fix-complete            "## Architecture Impact" heading
     architect-review/review/qa/epic-review    strict JSON parse + decision value
-    epic-breakdown-complete                   ticket naming + "## Domain" sections
+    epic-analysis-review/epic-breakdown-review  strict JSON parse + decision in the allowed set
+    epic-breakdown-complete, epic-breakdown-fix-complete
+                                              ticket naming, "## Domains"/"## Verification"
+                                              sections, per-domain checklist, tracker ids
     distill-complete                          vault line caps + retry state
     adr-distill-complete                      ADR frontmatter validity
 """
@@ -63,6 +66,9 @@ _EPIC_OUTPUTS: Dict[str, Callable[[str], List[Path]]] = {
     "epic-design-complete": lambda e: [ai_run.epic_design_path(e)],
     "epic-design-fix-complete": lambda e: [ai_run.epic_design_path(e)],
     "epic-review-complete": lambda e: [ai_run.epic_review_report_path(e)],
+    "epic-analysis-review-complete": lambda e: [ai_run.epic_analysis_review_report_path(e)],
+    "epic-analysis-fix-complete": lambda e: [ai_run.epic_analysis_path(e)],
+    "epic-breakdown-review-complete": lambda e: [ai_run.epic_breakdown_review_report_path(e)],
 }
 
 
@@ -100,7 +106,7 @@ def _adr_paths(epic: str) -> List[Path]:
 def missing_outputs(step: str, ident: str, epic: bool) -> List[str]:
     """Repo-relative paths of required outputs of a complete step that are absent/empty."""
     missing: List[Path] = []
-    if epic and step == "epic-breakdown-complete":
+    if epic and step in ("epic-breakdown-complete", "epic-breakdown-fix-complete"):
         for p in (ai_run.epic_story_map_path(ident), ai_run.epic_story_status_path(ident)):
             if _empty(p):
                 missing.append(p)
@@ -149,7 +155,12 @@ def fix_round(step: str, history: List[Dict], epic: bool) -> Optional[int]:
     done = [h for h in history if h.get("status") == "done"]
 
     if epic:
-        return _simple_gate(done, "epic_design_fix_complete", "epic_review_complete", "approve")
+        marker, gate = "epic_design_fix_complete", "epic_review_complete"
+        if step.startswith("epic-analysis-fix"):
+            marker, gate = "epic_analysis_fix_complete", "epic_analysis_review_complete"
+        elif step.startswith("epic-breakdown-fix"):
+            marker, gate = "epic_breakdown_fix_complete", "epic_breakdown_review_complete"
+        return _simple_gate(done, marker, gate, "approve")
     if step.startswith("architect-fix"):
         return _simple_gate(done, "architect_fix_complete", "architect_review_complete", "approve")
 

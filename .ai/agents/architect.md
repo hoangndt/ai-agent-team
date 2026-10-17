@@ -44,6 +44,10 @@ Output expectations by file:
 - Unknowns
 - Ambiguities that may affect implementation
 
+Multi-domain tickets:
+
+- When the ticket `input.md` has a `## Domain Checklist` or `## Verification` section, carry every checklist item and every verification step into `acceptance_criteria.md` as testable criteria, grouped by domain where a checklist exists
+
 Rules:
 
 - Do NOT write production code in this step

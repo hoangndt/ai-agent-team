@@ -36,6 +36,10 @@ OLD_TABLE = {
     "epic-review-prepare": ("sonnet", "medium"),
     "epic-breakdown-prepare": ("sonnet", "high"),
     "adr-distill-prepare": ("sonnet", "medium"),
+    "epic-analysis-review-prepare": ("sonnet", "medium"),
+    "epic-analysis-fix-prepare": ("sonnet", "high"),
+    "epic-breakdown-review-prepare": ("sonnet", "medium"),
+    "epic-breakdown-fix-prepare": ("sonnet", "high"),
 }
 
 
