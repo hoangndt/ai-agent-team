@@ -8,8 +8,11 @@ generation for every agent role, output verification, and stage routing. Everyth
 
 ## Key Components
 
-- `.ai/bin/ai_run.py` — single-file CLI runner; path/status helpers, prompt builders, prepare/
-  complete handlers, next-action routers, WezTerm auto-spawn, argparse wiring.
+- `.ai/bin/ai_run.py` — CLI entry point + re-export facade (`main`); no logic (ADR-002).
+- `.ai/bin/ai_runner/` — logic package: constants, paths, state, context, prompts, stage modules
+  (architect, dev_qa, distill, arch, epic), steps, routing, wezterm, autoflow, cli.
+- `.ai/step_models.json` — project-owned per-`*-prepare`-step model/effort; scaffolded by `install.py`
+  from `.ai/templates/step_models.template.json`; read by `get_step_model` (`ai_runner/steps.py`).
 - `.ai/agents/*.md` — role instruction files (architect, architect_reviewer, developer, reviewer,
   qa, epic_analyst, epic_designer, epic_reviewer, epic_planner, arch_init) injected verbatim into
   generated prompts.
@@ -51,6 +54,8 @@ The `arch-init` command is the one project-level, ticket-less exception: it reus
 prepare/act/complete + status.json machinery via a fixed sentinel ticket id (`_arch-init`,
 `.ai/runs/_arch-init/`) instead of forking ticket-less helper variants.
 
+Step models: `get_step_model` reads `step_models.json` at call time; missing file warns and falls back to sonnet/high, invalid file raises `StepConfigError` (`[ERROR]`); `preflight_step_models` runs before a prepare mutates state in `--run-auto`/autoflow.
+
 Claude-wrapper path (ADR-001, proposed): `/start-ticket|/start-epic` loop runs
 `ai_wrap.py next --json` → explicit `ai_run.py <prepare>` → fresh `workflow-step` sub-agent on
 `prompt_path` → Report gate (pause on non-`none` QUESTIONS/ASSUMPTIONS/BLOCKERS or malformed report; before JSON decision gates) → explicit `ai_run.py <complete>` → confirm from `status.json`. Fix-round counts come
@@ -58,8 +63,8 @@ from `status.json` history (cap 2, then ask operator).
 
 ## Entry Points
 
-- CLI: `python .ai/bin/ai_run.py <subcommand> ...` (see `KNOWN_SUBCOMMANDS`, `build_parser`,
-  `main`).
+- CLI: `python .ai/bin/ai_run.py <subcommand> ...` (see `KNOWN_SUBCOMMANDS`, `build_parser` in `ai_runner/cli.py`;
+  `main` in `ai_run.py`).
 - Positional shortcut: `python .ai/bin/ai_run.py <TICKET> [inline_req]` (auto-inits or advances).
 - `next` / `epic-next` — print or execute the next pipeline step for a ticket/epic.
 - `ticket --auto-flow` / `epic --auto-flow` — run the full pipeline unattended via WezTerm +
@@ -93,4 +98,7 @@ from `status.json` history (cap 2, then ask operator).
   when `--run-auto` is passed.
 - Wrapper orchestrator must not write under `.ai/runs/`/`.ai/epics/`, commit, or use `next --run`
   (it re-routes from mutated `current_stage`); confirm every complete from `status.json`, not exit
-  code (distill retry and `[BLOCK]` exit 0). `ai_wrap.py` stays read-only; `ai_run.py` unmodified.
+  code (distill retry and `[BLOCK]` exit 0). `ai_wrap.py` stays read-only.
+- Import order is acyclic: constants -> paths -> state -> context -> prompts -> stage modules -> routing -> wezterm/autoflow -> cli. Put new code in the owning module; do not re-grow `ai_run.py`.
+- A function moved between `ai_runner` modules must stay re-exported from `ai_run`; patch the defining module, not the facade.
+- Never hardcode model/effort in Python; `step_models.json` keys must equal `KNOWN_PREPARE_STEPS` (test-enforced). `ai_wrap.py` stays read-only but calls `ai_run.get_step_model`.
