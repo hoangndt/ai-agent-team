@@ -239,7 +239,7 @@ def route(ident: str, epic: bool) -> Dict:
         return out
 
     prepare_step = step if kind == "prepare" else complete_to_prepare[step]
-    model, effort = ai_run.STEP_MODEL.get(prepare_step, ai_run._DEFAULT_STEP_MODEL)
+    model, effort = ai_run.get_step_model(prepare_step)
     out["model"], out["effort"] = model, effort
     out["fix_round"] = fix_round(step, history, epic)
     prompt = prompt_paths[prepare_step](ident)  # type: ignore[operator]

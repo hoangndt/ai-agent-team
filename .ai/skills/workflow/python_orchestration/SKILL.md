@@ -29,6 +29,7 @@ The workflow is structured as:
 - **Complete functions** — verify required output files are non-empty; advance status
 - **Status tracker** — `status.json` records current stage, completed stages, and artifact paths
 - **Skill loader** — reads `project_config.json` to inject domain-specific skill files into prompts
+- **Step model config** — `.ai/step_models.json` (project-owned, scaffolded by `install.py`) maps each `*-prepare` step to a model and effort; read at call time by `get_step_model`
 - **Context builder** — assembles git diff, file tree, and relevant paths for each role
 
 ---
@@ -42,7 +43,9 @@ The workflow is structured as:
 5. `status.json` must be updated atomically at each transition
 6. Skill files are injected verbatim — do not summarize or transform them
 7. Prompt templates must include: role context, skill sections, input files, and output paths
-8. Keep `ai_run.py` as a single-file script — do not split into packages unless clearly necessary
+8. `ai_run.py` is only the CLI entry point and a re-export facade; logic lives in `.ai/bin/ai_runner/` modules split by responsibility. Put new code in the module that owns it, keep imports acyclic (constants → paths → state → context → prompts → stage modules → routing → wezterm/autoflow → cli), and do not re-grow `ai_run.py`
+9. A function moved between `ai_runner` modules must stay re-exported from `ai_run.py`; code that patches behavior patches the defining module, not the facade
+10. Per-step model and effort come from `.ai/step_models.json` through `get_step_model`; never hardcode them in Python
 
 ---
 
@@ -84,5 +87,5 @@ Transitions must only move forward, never backward, unless explicitly implementi
 - generating prompts that include file content not relevant to the current domain
 - spawning WezTerm on complete steps
 - silently skipping file verification on complete steps
-- hardcoding domain logic into the runner — keep it config-driven
+- hardcoding domain logic or per-step model/effort values into the runner — keep it config-driven
 - adding complex Python dependencies; prefer stdlib where possible

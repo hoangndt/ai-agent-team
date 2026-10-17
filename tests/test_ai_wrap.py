@@ -110,6 +110,7 @@ class RunnerIntegrationTests(unittest.TestCase):
         ai.mkdir()
         for d in ("agents", "templates", "skills", "bin"):
             shutil.copytree(ROOT / ".ai" / d, ai / d, ignore=shutil.ignore_patterns("__pycache__"))
+        shutil.copy(ROOT / ".ai" / "step_models.json", ai / "step_models.json")
         cfg = json.loads((ROOT / ".ai" / "project_config.json").read_text())
         cfg["vault"]["enabled"] = False
         (ai / "project_config.json").write_text(json.dumps(cfg))

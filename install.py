@@ -12,7 +12,8 @@ Options:
     --target <path>             Target project directory (required unless --sync-all)
     --sync-all                  Read config file and sync to all listed projects
     --config <path>             Path to config file (default: ./projects.json next to install.py)
-    --force-project-files       Overwrite project_config.json and CLAUDE.md if they exist
+    --force-project-files       Overwrite project_config.json, step_models.json, CLAUDE.md and the vault
+                                skeleton if they exist
     --with-skills <profile>     Copy examples/<profile>/skills/ into target .ai/skills/
     --dry-run                   Simulate actions without making any changes
     --yes                       Skip interactive confirmation prompt
@@ -67,6 +68,11 @@ VAULT_FILES = [
     ("modules/_domain.template.md", "modules/_domain.template.md"),
     ("decisions/ADR-NNN-template.md", "decisions/ADR-NNN-template.md"),
 ]
+
+# Per-step model/effort settings: project-owned, scaffolded from the shipped template
+# when absent and never overwritten on upgrade.
+STEP_MODELS_TEMPLATE = Path(".ai/templates/step_models.template.json")
+STEP_MODELS_FILE = Path(".ai/step_models.json")
 
 # Sentinel file to verify we are running from inside the source repo
 SOURCE_SENTINEL = Path(".ai/bin/ai_run.py")
@@ -148,7 +154,7 @@ def backup_managed_files(
                 shutil.copy2(f, dst)
             backed_up.append(str(claude_rel))
     if include_project_files:
-        project_file_rels = [Path(".ai/project_config.json"), Path(".ai/CLAUDE.md")]
+        project_file_rels = [Path(".ai/project_config.json"), STEP_MODELS_FILE, Path(".ai/CLAUDE.md")]
         project_file_rels += [VAULT_CONTENT_DIR / dst_rel for _, dst_rel in VAULT_FILES]
         for project_file_rel in project_file_rels:
             src = target / project_file_rel
@@ -323,6 +329,14 @@ def install_ai(target: Path, args: argparse.Namespace) -> int:
     else:
         planned_summary.append(f"[INIT] .ai/project_config.json (from template)")
 
+    # step_models.json
+    step_models_src = source_root / STEP_MODELS_TEMPLATE
+    step_models_dst = target / STEP_MODELS_FILE
+    if step_models_dst.exists() and not args.force_project_files:
+        planned_summary.append(f"[SKIP] {STEP_MODELS_FILE} (already exists)")
+    else:
+        planned_summary.append(f"[INIT] {STEP_MODELS_FILE} (from template)")
+
     # CLAUDE.md
     claude_src = source_root / "CLAUDE.md"
     claude_dst = target / ".ai" / "CLAUDE.md"
@@ -468,6 +482,21 @@ def install_ai(target: Path, args: argparse.Namespace) -> int:
                 return 1
         else:
             print_action("WARNING", ".ai/project_config.json", "template not found — skipped", dry_run=dry_run)
+
+    # step_models.json
+    if step_models_dst.exists() and not args.force_project_files:
+        print_action("SKIP", str(STEP_MODELS_FILE), "(already exists, use --force-project-files to overwrite)", dry_run=dry_run)
+    elif step_models_src.exists():
+        try:
+            if not dry_run:
+                step_models_dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(step_models_src, step_models_dst)
+            print_action("INIT", str(STEP_MODELS_FILE), "(created from template)", dry_run=dry_run)
+        except OSError as e:
+            print(f"ERROR: Failed to write {STEP_MODELS_FILE}: {e}", file=sys.stderr)
+            return 1
+    else:
+        print_action("WARNING", str(STEP_MODELS_FILE), "template not found — skipped", dry_run=dry_run)
 
     # CLAUDE.md
     if claude_dst.exists() and not args.force_project_files:
@@ -713,7 +742,7 @@ def main() -> None:
     parser.add_argument(
         "--force-project-files",
         action="store_true",
-        help="Overwrite project_config.json and CLAUDE.md even if they already exist",
+        help="Overwrite project_config.json, step_models.json, CLAUDE.md and vault skeleton even if they already exist",
     )
     parser.add_argument(
         "--with-skills",
