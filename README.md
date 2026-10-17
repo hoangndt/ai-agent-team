@@ -257,7 +257,7 @@ Alternative to WezTerm: stay in **one** Claude Code session. Slash commands orch
 
 Shortcut/Jira MCP tools are discovered at runtime; if absent or failing, the command stops with an explicit error and creates nothing.
 
-The orchestrator pauses only for: sub-agent QUESTIONS/BLOCKERS (relayed to you; the same stage's agent is re-dispatched with your answers), a third fix round for a gate (extra round / abort), and runner errors. Each dispatch passes the step's `model` and `effort` from `STEP_MODEL` and echoes `[step] model=… effort=…`.
+The orchestrator pauses only for: any non-empty sub-agent QUESTIONS, ASSUMPTIONS or BLOCKERS at every stage including fix rounds (relayed to you verbatim; the same stage's agent is re-dispatched with your answers, or for an assumptions-only pause you may accept and continue), a malformed or missing report (re-dispatch / abort), a third fix round for a gate (extra round / abort), and runner errors. Each dispatch passes the step's `model` and `effort` from `STEP_MODEL` and echoes `[step] model=… effort=…`.
 
 Under the hood `.ai/bin/ai_wrap.py` (read-only sidecar, never mutates state) provides `next <T> --json`, `epic-next <E> --json`, and `validate-id <ID>`.
 
