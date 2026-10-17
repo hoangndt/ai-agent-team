@@ -22,7 +22,7 @@ generation for every agent role, output verification, and stage routing. Everyth
   model/effort, next_complete, fix_round, missing_outputs, status.json echo) and `validate-id`;
   imports `ai_run.next_action`/`epic_next_action`; never mutates state.
 - `.claude/commands/*.md`, `.claude/agents/workflow-step*.md` — Claude Code wrapper: `/create-*`,
-  `/start-*`, `/*-status` orchestrators plus generic per-stage worker agents (medium/high tiers).
+  `/start-*`, `/*-status` orchestrators plus generic per-stage worker agents (medium/high tiers); both carry the Report gate / final-report contract.
   Installed by `install.py` via explicit `CLAUDE_MANAGED_FILES` (not whole-dir).
 - `examples/` — reference fixture projects (`mi-portal`, `pclab`, `shopify-jp`) used for manual
   validation of runner changes.
@@ -53,7 +53,7 @@ prepare/act/complete + status.json machinery via a fixed sentinel ticket id (`_a
 
 Claude-wrapper path (ADR-001, proposed): `/start-ticket|/start-epic` loop runs
 `ai_wrap.py next --json` → explicit `ai_run.py <prepare>` → fresh `workflow-step` sub-agent on
-`prompt_path` → explicit `ai_run.py <complete>` → confirm from `status.json`. Fix-round counts come
+`prompt_path` → Report gate (pause on non-`none` QUESTIONS/ASSUMPTIONS/BLOCKERS or malformed report; before JSON decision gates) → explicit `ai_run.py <complete>` → confirm from `status.json`. Fix-round counts come
 from `status.json` history (cap 2, then ask operator).
 
 ## Entry Points
