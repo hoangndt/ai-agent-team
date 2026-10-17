@@ -17,7 +17,9 @@ You (Claude) are invoked at specific stages of a ticket workflow. Each stage gen
 ```
 .ai/
   bin/
-    ai_run.py              # Workflow runner
+    ai_run.py              # Workflow runner entry point + re-export facade
+    ai_runner/             # Runner implementation modules (paths, state, prompts, stages, routing, wezterm, cli)
+    ai_wrap.py             # Read-only routing sidecar for the Claude wrapper
   agents/
     architect.md           # Role instructions for Architect
     developer.md           # Role instructions for Developer
@@ -29,6 +31,7 @@ You (Claude) are invoked at specific stages of a ticket workflow. Each stage gen
     epic_planner.md        # Role instructions for Epic Planner (breakdown)
   templates/               # Optional shared templates
   project_config.json      # Project name, domain config, base branch, skills
+  step_models.json         # Per-step Claude model + effort (project-owned)
   runs/
     <TICKET>/
       status.json          # Stage tracker (auto-managed)
