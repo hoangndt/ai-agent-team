@@ -65,4 +65,6 @@ For each point identified:
 
 Then ask the user to confirm or correct each point before the architect phase is considered done.
 
+Wrapper path (no interactive user; the final message uses the labelled report): blockers go under BLOCKERS, open questions under QUESTIONS, and non-blockers under ASSUMPTIONS only when they are material choices the operator should see. Do not copy `assumptions.md` into ASSUMPTIONS; list only the few items needing operator attention, or `none`.
+
 Goal: ensure the architect output is clear and actionable for the Developer — no ambiguity left unaddressed.
