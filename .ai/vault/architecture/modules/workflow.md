@@ -25,7 +25,7 @@ generation for every agent role, output verification, and stage routing. Everyth
   model/effort, next_complete, fix_round, missing_outputs, status.json echo) and `validate-id`;
   imports `ai_run.next_action`/`epic_next_action`; never mutates state.
 - `.claude/commands/*.md`, `.claude/agents/workflow-step*.md` — Claude Code wrapper: `/create-*`,
-  `/start-*`, `/*-status` orchestrators plus generic per-stage worker agents (medium/high tiers); both carry the Report gate / final-report contract.
+  `/start-*`, `/*-status` orchestrators plus generic per-stage worker agents (medium/high tiers); both carry the Report gate / final-report contract. Report gate adds a recommendation step on `answer` (additive, read-only draft, operator-confirmed). `/create-ticket` run id = ticket file stem, domain(s) from flags/input; `init --domains` sets them.
   Installed by `install.py` via explicit `CLAUDE_MANAGED_FILES` (not whole-dir).
 - `examples/` — reference fixture projects (`mi-portal`, `pclab`, `shopify-jp`) used for manual
   validation of runner changes.
@@ -60,7 +60,7 @@ Step models: `get_step_model` reads `step_models.json` at call time; missing fil
 
 Claude-wrapper path (ADR-001, proposed): `/start-ticket|/start-epic` loop runs
 `ai_wrap.py next --json` → explicit `ai_run.py <prepare>` → fresh `workflow-step` sub-agent on
-`prompt_path` → Report gate (pause on non-`none` QUESTIONS/ASSUMPTIONS/BLOCKERS or malformed report; before JSON decision gates) → explicit `ai_run.py <complete>` → confirm from `status.json`. Fix-round counts come
+`prompt_path` → Report gate (pause on non-`none` QUESTIONS/ASSUMPTIONS/BLOCKERS or malformed report; before JSON decision gates; on `answer`, draft recommendations and get operator confirmation before the `Operator answered:` re-dispatch) → explicit `ai_run.py <complete>` → confirm from `status.json`. Fix-round counts come
 from `status.json` history (cap 2, then ask operator).
 
 ## Entry Points
@@ -105,4 +105,5 @@ from `status.json` history (cap 2, then ask operator).
 - A function moved between `ai_runner` modules must stay re-exported from `ai_run`; patch the defining module, not the facade.
 - Never hardcode model/effort in Python; `step_models.json` keys must equal `KNOWN_PREPARE_STEPS` (test-enforced). `ai_wrap.py` stays read-only but calls `ai_run.get_step_model`.
 - `epic-generate-tickets` needs an approved breakdown review once any breakdown review/fix exists (warn-only otherwise); `epic-breakdown-complete`/`-fix-complete` share `validate_breakdown` (tracker ids <-> ticket files one-to-one); `epic_next_action` never returns `done` before breakdown review approval; no numeric sizing in prompts.
+- Recommendations are never sent without an explicit operator choice; `epic-generate-tickets` run ids stay `<EPIC>-<stem>` while `/create-ticket` uses the bare stem.
 - Multi-domain tickets: distill refreshes only the primary domain's module doc.
