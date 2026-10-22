@@ -98,6 +98,11 @@ def build_parser() -> argparse.ArgumentParser:
         default="",
         help="Optional domain override, e.g. backend or frontend",
     )
+    p_init.add_argument(
+        "--domains",
+        default="",
+        help="Optional comma-separated domains, e.g. backend,frontend (first = primary).",
+    )
 
     for cmd in [
         "architect-prepare",
@@ -322,7 +327,13 @@ def main() -> int:
                 init_kwargs={},
             )
         elif args.command == "init":
-            init_ticket(args.ticket, args.requirement, domain=args.domain)
+            init_domains = [d.strip() for d in args.domains.split(",") if d.strip()]
+            init_ticket(
+                args.ticket,
+                args.requirement,
+                domain=args.domain,
+                domains=init_domains or None,
+            )
         elif args.command == "architect-prepare":
             architect_prepare(args.ticket)
         elif args.command == "architect-complete":

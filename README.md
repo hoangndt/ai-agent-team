@@ -148,7 +148,7 @@ Slash commands orchestrate from **one** Claude Code session. Each stage (Archite
 
 | Command | What it does |
 |---|---|
-| `/create-ticket <source> [--domain d]` | `source` = local epic ticket name (`.ai/epics/*/breakdown/tickets/`), Shortcut id/URL, Jira key/URL, or inline text. Runs `ai_run.py init`; never overwrites an existing run |
+| `/create-ticket <source> [--domain d] [--domains a,b]` | `source` = local epic ticket name (`.ai/epics/*/breakdown/tickets/`), Shortcut id/URL, Jira key/URL, or inline text. Runs `ai_run.py init`; never overwrites an existing run. For an epic ticket the run id is the ticket file name (no epic prefix). Domain(s) come from the flags, else from an explicit `## Domains` / `Domain:` declaration in the input, else `default_domain` |
 | `/start-ticket <TICKET> [--until <stage>]` | drives the whole pipeline, resumable. `--until`: `architect`, `architect-review`, `dev`, `review`, `qa`, `distill` |
 | `/ticket-status <TICKET>` | read-only state and next step |
 | `/create-epic <source> [--domains a,b]` | inline text / Shortcut / Jira, then `epic-init` |
@@ -159,13 +159,14 @@ Slash commands orchestrate from **one** Claude Code session. Each stage (Archite
 /create-ticket EPIC-001-US-001-add-schema        # local epic ticket
 /create-ticket sc-12345                          # Shortcut story (needs a Shortcut MCP server)
 /create-ticket PROJ-42 --domain backend          # Jira issue (needs an Atlassian MCP server)
+/create-ticket EPIC-001-US-002-sync --domains backend,frontend   # multi-domain (first = primary)
 /create-ticket "fix-login-bug: users cannot log in with SSO"   # inline text
 /start-ticket EPIC-001-US-001-add-schema
 ```
 
 Shortcut/Jira MCP tools are discovered at runtime; if missing or failing, the command stops with an explicit error and creates nothing.
 
-**When the orchestrator pauses.** On any non-empty QUESTIONS, ASSUMPTIONS or BLOCKERS from a sub-agent (relayed to you verbatim; the same stage is re-dispatched with your answers, or for assumptions only you may accept and continue), on a malformed or missing report, before a third fix round on a gate (extra round or abort), and on runner errors. Each dispatch uses the step's `model` and `effort` from `.ai/step_models.json` and echoes `[step] model=... effort=...`.
+**When the orchestrator pauses.** On any non-empty QUESTIONS, ASSUMPTIONS or BLOCKERS from a sub-agent (relayed to you verbatim; if you choose to answer, the orchestrator first offers a recommended answer for each item, which you can use, edit or replace with your own, and only your confirmed text is sent when the same stage is re-dispatched; for assumptions only you may accept and continue), on a malformed or missing report, before a third fix round on a gate (extra round or abort), and on runner errors. Each dispatch uses the step's `model` and `effort` from `.ai/step_models.json` and echoes `[step] model=... effort=...`.
 
 **What each ticket stage produces** (under `.ai/runs/<TICKET>/`, git-ignored):
 
@@ -421,7 +422,7 @@ python3 .ai/bin/ai_run.py arch-init-prepare | arch-init-complete
 python3 .ai/bin/ai_run.py arch-refresh-prepare | arch-refresh-complete
 
 # Claude slash commands (inside Claude Code)
-/create-ticket <source> [--domain d]    /start-ticket <TICKET> [--until stage]    /ticket-status <TICKET>
+/create-ticket <source> [--domain d] [--domains a,b]    /start-ticket <TICKET> [--until stage]    /ticket-status <TICKET>
 /create-epic <source> [--domains a,b]   /start-epic <EPIC> [--until stage]        /epic-status <EPIC>
 
 # runner CLI (advanced)
