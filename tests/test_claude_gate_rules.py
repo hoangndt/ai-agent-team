@@ -106,6 +106,29 @@ class CommandRules(unittest.TestCase):
                 ):
                     self.assertIn(marker, t, marker)
 
+    def test_recommended_answers(self):
+        for p in COMMANDS:
+            t = p.read_text()
+            with self.subTest(p.name):
+                for marker in (
+                    "`Recommended: <concrete answer or decision>`",
+                    "orchestrator recommendation, not yet an answer",
+                    "\"use recommended\" / \"edit\"",
+                    "\"write my own\"",
+                    "Never send a recommendation without that explicit choice",
+                    "never read whole prompt/report files and never write under `.ai/runs/` or `.ai/epics/`",
+                    "never invent one",
+                ):
+                    self.assertIn(marker, t, marker)
+
+    def test_recommendation_text_shared(self):
+        def segment(p):
+            t = p.read_text()
+            i = t.index("Do not start from a blank prompt")
+            return t[i:t.index("ALWAYS re-dispatch the same stage", i)]
+
+        self.assertEqual(segment(COMMANDS[0]), segment(COMMANDS[1]))
+
     def test_removed_wording(self):
         for p in COMMANDS:
             t = p.read_text()
