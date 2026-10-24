@@ -51,10 +51,10 @@ python3 install.py --target /path/to/my-project --global-claude
 What this does:
 
 - `--target` installs the engine into the project: `.ai/bin/`, `.ai/agents/`, `.ai/templates/` (managed, overwritten on every install) plus project-owned starter files (`.ai/project_config.json`, `.ai/step_models.json`, `.ai/CLAUDE.md`, vault skeleton) that are created only if missing.
-- `--global-claude` writes the 9 slash-command / sub-agent files to `~/.claude/commands` and `~/.claude/agents` once, instead of into every project's `.claude/`. It asks for confirmation separately because it writes outside the project (add `--yes` to skip all prompts).
+- `--global-claude` writes the 10 slash-command / sub-agent files to `~/.claude/commands` and `~/.claude/agents` once, instead of into every project's `.claude/`. It asks for confirmation separately because it writes outside the project (add `--yes` to skip all prompts).
 - The commands call `.ai/bin/ai_wrap.py` and `ai_run.py` by relative path, so **every project still needs its own `.ai/`**; the global install only shares the commands.
 
-Prefer per-project commands? Drop `--global-claude`: the same 9 files go into `my-project/.claude/` instead. Project-level copies override global ones with the same name.
+Prefer per-project commands? Drop `--global-claude`: the same 10 files go into `my-project/.claude/` instead. Project-level copies override global ones with the same name.
 
 Installer options:
 
@@ -80,7 +80,7 @@ What lands in your project:
 | `.ai/CLAUDE.md` | project-owned operating guide | kept if it exists |
 | `.ai/vault/architecture/{system-overview.md, modules/_domain.template.md, decisions/ADR-NNN-template.md}` | project-owned skeleton | kept if it exists |
 | `.ai/skills/...` | only with `--with-skills` | existing files kept |
-| `.claude/commands/{create,start}-{ticket,epic}.md`, `{ticket,epic}-status.md`, `.claude/agents/workflow-step*.md` | managed (9 files); in `~/.claude` with `--global-claude` | overwritten; other files in `.claude/` are never touched |
+| `.claude/commands/{create,start}-{ticket,epic}.md`, `{ticket,epic}-status.md`, `autopilot-ticket.md`, `.claude/agents/workflow-step*.md` | managed (10 files); in `~/.claude` with `--global-claude` | overwritten; other files in `.claude/` are never touched |
 
 Your project's root `CLAUDE.md` is handled later by `arch-init`.
 
@@ -150,6 +150,7 @@ Slash commands orchestrate from **one** Claude Code session. Each stage (Archite
 |---|---|
 | `/create-ticket <source> [--domain d] [--domains a,b]` | `source` = local epic ticket name (`.ai/epics/*/breakdown/tickets/`), Shortcut id/URL, Jira key/URL, or inline text. Runs `ai_run.py init`; never overwrites an existing run. For an epic ticket the run id is the ticket file name (no epic prefix). Domain(s) come from the flags, else from an explicit `## Domains` / `Domain:` declaration in the input, else `default_domain` |
 | `/start-ticket <TICKET> [--until <stage>]` | drives the whole pipeline, resumable. `--until`: `architect`, `architect-review`, `dev`, `review`, `qa`, `distill` |
+| `/autopilot-ticket <source> [--domain d] [--domains a,b]` | unattended create + drive + verify + commit + squash-merge of one ticket; see [Autopilot](#autopilot-unattended-ticket) |
 | `/ticket-status <TICKET>` | read-only state and next step |
 | `/create-epic <source> [--domains a,b]` | inline text / Shortcut / Jira, then `epic-init` |
 | `/start-epic <EPIC> [--until <stage>]` | analysis, design, review (with fix loop), ADR distill, breakdown; then asks before `epic-generate-tickets` and lists `/start-ticket` commands (starts none) |
@@ -196,6 +197,18 @@ The ticket is done when review is `approve`, QA is `pass`, and distill completes
 Add `git add`/`git commit` rules only if you accept the Developer's commits. A sub-agent stalled on a permission prompt shows up as a failed step.
 
 Known unknowns (verify once in your environment): whether per-call `effort` is honored (if the tool rejects it, the commands fall back to the `workflow-step-medium` / `workflow-step-high` agents), whether permission prompts inside a sub-agent surface to you or are auto-denied, and whether `SendMessage` can continue a finished sub-agent (otherwise a fresh agent runs on the same prompt file, still correct). With the `rtk` hook installed, `ai_wrap.py ... --json` output is retried via `rtk proxy` if it comes back non-JSON.
+
+### Autopilot (unattended ticket)
+
+`/autopilot-ticket <source> [--domain d] [--domains a,b]` takes one ticket from nothing to merged without you in the loop. It loads `/create-ticket` and `/start-ticket` and follows them, overriding only their operator questions.
+
+- **Caffeinate.** It starts `caffeinate -dimsu -t 28800` as a background task (8 h cap, macOS only; elsewhere it warns and continues) and releases it when the run ends.
+- **Delegated authority.** At a Report gate pause it auto-resolves an item only if it has a concrete recommendation derived from the ticket/report/repo, is reversible and local, does not drop an acceptance criterion or decide product/business questions, and is not a verification request. Everything else is escalated to you with a recommendation. Each delegated decision is printed and appended to an audit file at `${TMPDIR:-/tmp}/autopilot-<runid>.md`, which feeds the commit body and the final summary. This waiver of "only the operator can waive an item" applies to `/autopilot-ticket` only; `/start-ticket` and `/start-epic` are unchanged.
+- **Pings.** It asks you only for: an invalid id, an unresolved source or missing Shortcut/Jira MCP, commands that cannot be loaded, escalated gate items, a step that failed again after one retry, a distill `[BLOCK]`, a fix-round cap hit again after one extra round, a repeated blocker for a deferred verification, and Finalize git problems.
+- **Verification.** When a sub-agent asks you to verify something, it tries Playwright/browser MCP, `curl` and test commands against `localhost` or hosts the ticket/docs name as dev/stage. If it cannot, the item is deferred: the sub-agent is told it is UNVERIFIED, and the summary and commit body list it with manual steps and a suggestion of how to automate it.
+- **Finalize.** After review approve, QA pass and distill done: `git add -A` (minus `.ai/runs/`), a staged-path guard (`.env`, keys, credentials and similar block the commit and ping you), a `feat(<TICKET>): ...` commit, then on a feature branch `git merge --squash` into `git.base_branch`, ending on the base branch. It never pushes, force-pushes, skips hooks, hard-resets or deletes branches; the feature branch is kept. A failure after checkout of the base branch is restored with `git reset --merge` and `git checkout <branch>`, then you are pinged. Re-running the command after a ping resumes safely.
+- **Permissions.** A command cannot escalate permissions and the wrapper never ships a permission-bypass mode. The command's `allowed-tools` frontmatter only pre-approves tools for that turn and does not restrict others. For a truly unattended run, start Claude Code in a permission mode you choose that does not prompt for the tools the run needs (see the allow-list above); a sub-agent stalled on a prompt counts as a failed step, retried once and then pinged.
+
 
 ---
 
@@ -423,6 +436,7 @@ python3 .ai/bin/ai_run.py arch-refresh-prepare | arch-refresh-complete
 
 # Claude slash commands (inside Claude Code)
 /create-ticket <source> [--domain d] [--domains a,b]    /start-ticket <TICKET> [--until stage]    /ticket-status <TICKET>
+/autopilot-ticket <source> [--domain d] [--domains a,b]
 /create-epic <source> [--domains a,b]   /start-epic <EPIC> [--until stage]        /epic-status <EPIC>
 
 # runner CLI (advanced)
