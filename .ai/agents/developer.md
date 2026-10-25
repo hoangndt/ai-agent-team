@@ -22,6 +22,13 @@ Work must:
 - Keep risk low unless ticket requires broader changes
 - If Figma design refs in prompt, inspect first, use to guide implementation and UI fidelity
 
+IMPLEMENTATION MINIMALITY:
+
+- Implement only what the approved ticket and mandatory architectural constraints require
+- Do not introduce unrequested abstractions, generic extension frameworks, speculative configuration options, additional services, or unnecessary compatibility layers
+- Prefer direct, readable implementation; if a simpler one satisfies the acceptance criteria, choose it
+- Never trade mandatory security, financial or correctness requirements for brevity
+
 Multi-domain tickets:
 
 - When the ticket `input.md` has a `## Domain Checklist`, implement every item across all listed domains

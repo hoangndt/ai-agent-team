@@ -54,6 +54,95 @@ Include:
 
 - Dependencies
 - Suggested order
+- Milestone grouping where useful (see Milestone-aware planning)
+- Optional `## Deferred` section (see SCOPE PRESERVATION)
+
+---
+
+# 🎯 Necessity first (decide before you split)
+
+Apply two decisions in order, for every capability in the design:
+
+- **Decision A:** should this capability exist in the current milestone?
+- **Decision B:** if yes, what is the right ticket boundary?
+
+Decision A comes first. Ticket granularity rules never justify implementing an unnecessary capability.
+
+Scope Necessity Check: a capability is necessary only if it (1) is required by an approved requirement, (2) is needed to demonstrate the current milestone's business outcome, (3) is needed to enforce a mandatory security or correctness invariant, or (4) is needed to unblock another necessary capability. Otherwise defer it. Mandatory security, financial, and correctness invariants are never traded for minimality.
+
+Do not design or schedule capabilities earlier than the milestone needs them; prefer the shortest safe path to the next observable business outcome.
+
+---
+
+# 🧭 OUTCOME-FIRST STORY BREAKDOWN
+
+The goal is the smallest executable backlog that demonstrates the epic's primary outcome, not a complete inventory of technical capabilities.
+
+1. Identify the first observable business outcome.
+2. Identify the minimum implementation required to demonstrate it safely.
+3. Create vertical slices that progressively deliver the outcome.
+4. Add supporting tickets only when they are necessary prerequisites, or independently valuable capabilities explicitly required by the approved epic.
+5. Defer optional hardening, optimization, analytics, and generalization.
+
+Do not create separate tickets merely because a component has its own API, a database table is independently testable, a subsystem has several responsibilities, an ADR needs implementation, or a reviewer identified another edge case. Technical details belong inside feature tickets unless they are genuine shared prerequisites.
+
+Every ticket's `## Goal` must answer: "What observable capability becomes available when this ticket is completed?" A ticket whose answer is only an internal technical improvement must justify in `## Notes` why it is a separate ticket and not part of a feature slice.
+
+---
+
+# ✂️ BACKLOG REDUCTION PASS
+
+Before writing ticket files, review every proposed ticket and ask:
+
+1. Is it required before the first business demonstration?
+2. Is it required by an approved acceptance criterion for the current milestone?
+3. Is it required to protect a mandatory invariant?
+4. Can it be merged into an existing vertical slice?
+5. Can it be deferred to a later milestone?
+
+Remove, merge or defer tickets that fail all of these. Do not optimize for ticket count; optimize for the shortest dependency path to the first meaningful business outcome. Preserve all mandatory requirements, scheduled at the earliest milestone that genuinely needs them.
+
+---
+
+# 🔗 DEPENDENCY DISCIPLINE
+
+A dependency is valid only when the dependent ticket cannot be implemented or meaningfully verified without the prerequisite. A dependency is not valid merely because tickets touch the same subsystem, one appears earlier in the architecture, a database table is shared, a later ticket extends an earlier capability, or the tickets belong to different workstreams. Prefer independent development where practical.
+
+Classify prerequisites:
+
+- Minimum safety prerequisites and functional prerequisites block an early controlled demonstration
+- Production-readiness prerequisites must be complete before the operation they protect, but do not block unrelated work that uses fixtures or mocks
+- Optional enhancements block nothing
+
+Record release or operational-readiness gates in `## Dependencies` and in the story map, separately from implementation dependencies.
+
+---
+
+# 🛡️ SCOPE PRESERVATION
+
+Never silently drop an explicitly approved requirement because it looks unnecessary. Two valid forms of deferral:
+
+- Approved requirement or mandatory invariant: keep its ticket and give it a later `## Suggested Order`
+- Design detail that does not trace to an approved requirement or mandatory invariant: list it under an optional `## Deferred` section in `epic_story_map.md` (item, source, reason, earliest milestone). A `## Deferred` item has no ticket file and no tracker row, and an approved requirement or mandatory invariant must never be listed there
+
+You may simplify ticket boundaries and sequencing without changing approved behavior. If the approved design itself looks excessive, do not redesign it or drop it: sequence that work at the latest milestone and raise under QUESTIONS in the final report which design items look excessive and why.
+
+Fix rounds:
+
+- A review-driven scope addition needs (1) the requirement or invariant it protects, (2) the concrete failure scenario, (3) the impact if omitted, (4) the simplest acceptable mitigation, and (5) why documenting the limitation or deferring is insufficient. Otherwise record it as a deferral
+- Findings marked `[optional]` or `[deferred]`, and other low findings, are recorded or deferred, not turned into tickets, unless trivially scope-neutral. This takes precedence over any "address medium and low where feasible" wording in the task instruction
+- A reviewer finding that the backlog is over-engineered is resolved through the reduction pass (remove, merge or defer) or by moving non-traceable detail to `## Deferred`; a `[scope-concern]` about the design itself is answered by sequencing late and raising it under QUESTIONS
+
+---
+
+# 🏁 Milestone-aware planning
+
+Use these labels only as planning vocabulary in the story map's workstreams and `Suggested Order`; they are not a new artifact or workflow state. Reuse the epic's own milestones where they already give equivalent boundaries.
+
+- `M0` feasibility: prove external dependencies and critical technical assumptions
+- `M1` first working outcome: the smallest safe end-to-end implementation that shows business value
+- `M2` operational readiness: mandatory capabilities and safeguards required for live operation
+- `M3` optimization: improvements driven by actual evidence
 
 ---
 
@@ -224,6 +313,10 @@ Before finalising output, verify each:
 - [ ] Every ticket has a runnable `## Verification` section
 - [ ] `## Goal` and `## Scope` are distinct and non-empty in every ticket
 - [ ] No ticket title is vague action phrase (e.g. "Improve X", "Refactor Y", "Handle Z")
+- [ ] The first observable business outcome is identified and the shortest safe path to it is visible
+- [ ] Every ticket passed the BACKLOG REDUCTION PASS; each answers "what observable capability becomes available?" in `## Goal`
+- [ ] No dependency exists only because tickets share a subsystem, table or workstream
+- [ ] No approved requirement or mandatory invariant was dropped or parked under `## Deferred`
 
 ---
 

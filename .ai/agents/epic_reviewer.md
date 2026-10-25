@@ -40,6 +40,26 @@ epic_review.json
 
 ---
 
+## DESIGN REVIEW MATERIALITY
+
+Approve when the design is sufficient to safely support breakdown, not when every conceivable improvement is incorporated. Do not manufacture review rounds.
+
+- Necessity check: for every custom component, ask whether it is needed now for an approved requirement, the current milestone's outcome, a mandatory invariant, or to unblock a necessary capability. A component with none of these is a scope-inflation finding (`scope`) recommending removal or deferral
+- Do not introduce new business requirements through design review. If you find a genuine requirement gap, report it in the final report under QUESTIONS for operator decision rather than as a design requirement
+- A review-driven addition must name (1) the requirement or invariant it protects, (2) the concrete failure scenario, (3) the impact if omitted, (4) the simplest acceptable mitigation, and (5) why documenting the limitation or deferring is insufficient. Otherwise report it as `[optional]` or `[deferred]`
+- Optional hardening and hypothetical scale issues are non-blocking
+
+Severity:
+
+- Blocking defect, `high`: violates a requirement, breaks a critical invariant, or makes the milestone infeasible
+- Material risk, `medium`: credible risk with meaningful impact on the current milestone; request mitigation or explicit risk acceptance, unless the design already records one
+- Optional improvement, `low`, message prefixed `[optional]`: never blocks
+- Future enhancement, `low`, message prefixed `[deferred]`: never blocks
+
+Tie each `high` or `medium` finding to the requirement, invariant or credible risk it concerns. An unverified critical external dependency requires a spike or explicit gate.
+
+Safety: a broken or missing mandatory security or financial invariant, approval gate or recovery requirement stays `high` regardless of cost; mandatory security, financial and correctness invariants are never weakened for minimality.
+
 ## Rules
 
 - Be strict

@@ -7,6 +7,14 @@ You run in two modes, selected by the task instruction you're given:
 - **Epic-approval mode** — after an epic's design review is approved, write new
   `proposed` ADR(s) distilled from that epic's `epic_design.md` §7 trade-offs.
 
+## ADR NECESSITY RULE (both modes)
+
+Create an ADR only when a decision (1) establishes a durable architectural constraint, (2) has meaningful alternatives and trade-offs, (3) is expensive or risky to reverse, and (4) materially affects future implementation.
+
+Do not create ADRs for routine implementation choices, default configuration values, individual endpoints, table definitions, ticket-specific behavior, minor error-handling rules, or decisions already covered by an existing ADR (reuse that ADR instead).
+
+Prefer fewer, broader ADRs that document durable architectural boundaries. Do not create one ADR per numbered design decision. Writing zero ADRs is valid.
+
 ## Mode: Ticket-land (vault refresh + ADR flips)
 
 Role:
@@ -81,7 +89,7 @@ Role:
 - Triggered after an epic's design review is approved (`epic_review.json` decision
   `approve`). Read the epic's `epic_design.md`, specifically §7 (Risks / Trade-offs)
   and the alternatives it names as considered-and-rejected.
-- For each distinct decision worth recording, write a new `proposed` ADR file under
+- For each distinct decision worth recording under the ADR NECESSITY RULE, write a new `proposed` ADR file under
   `.ai/vault/architecture/decisions/`, using `ADR-NNN-template.md`'s frontmatter shape:
   `id`, `status: proposed`, `epic: <epic id>`, `tickets: []`, `supersedes:`. Use the
   starting ADR id given in the task instruction for the first ADR; increment

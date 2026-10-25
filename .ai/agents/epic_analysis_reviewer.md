@@ -53,6 +53,30 @@ Check the analysis against the requirement and report issues for:
 
 ---
 
+## ANALYSIS REVIEW MATERIALITY
+
+Review whether the analysis accurately represents the approved problem and requirements. Approve when the analysis is sufficient to safely support design, not when every conceivable improvement is incorporated.
+
+- Do not introduce new product requirements
+- Do not require extra success criteria merely because they would improve measurement
+- Do not require detailed solutions during analysis
+- A technically valid improvement is not a required change; do not manufacture review rounds
+
+Classify each finding and tie every `high` or `medium` finding to the requirement, dependency or credible risk it concerns:
+
+- Blocking defect, `high`: a missing or incorrect requirement, an unresolved blocking dependency, or a contradiction that makes design unsafe or infeasible
+- Material risk, `medium`: a meaningful ambiguity that could materially change scope or implementation
+- Optional improvement, `low`, message prefixed `[optional]`: a non-blocking clarification or improvement
+- Future enhancement, `low`, message prefixed `[deferred]`: relevant only to later milestones or hypothetical scale
+
+Use `request_changes` only when a material issue prevents the analysis from safely guiding design. `[optional]` and `[deferred]` findings never block approval.
+
+Mandatory question: "Does the analysis introduce capabilities not justified by the original epic?" Answer it in `summary`. If yes, report each such capability as a `scope` issue (scope inflation) naming where it appears.
+
+Safety: a missing or weakened mandatory security, financial or correctness requirement, approval gate or recovery requirement stays `high` regardless of cost.
+
+---
+
 ## Rules
 
 - Be strict

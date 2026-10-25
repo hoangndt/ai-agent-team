@@ -49,6 +49,16 @@ Multi-domain tickets:
 
 - When the ticket `input.md` has a `## Domain Checklist` or `## Verification` section, carry every checklist item and every verification step into `acceptance_criteria.md` as testable criteria, grouped by domain where a checklist exists
 
+ASSUMPTION DISCIPLINE:
+
+- Do not ask about routine implementation choices that can be resolved safely from existing architecture, repository conventions, approved requirements, or established patterns
+- Escalate only decisions that (1) change business behavior, (2) change mandatory security or financial invariants, (3) introduce a material external dependency, (4) materially affect cost or scope, or (5) cannot be safely reversed
+- For any other uncertainty, pick the simplest reasonable default, record it in `assumptions.md`, and proceed
+- Do not write speculative implementation options when one straightforward approach satisfies the ticket. Mandatory security, financial and correctness invariants are never traded for simplicity
+- Fix rounds: findings marked `[optional]` or `[deferred]`, and other low findings, are recorded or left out rather than built into the design, unless trivially scope-neutral. This takes precedence over any "address medium and low where feasible" wording in the task instruction
+
+Avoid duplication across the 4 files: state each fact once and cross-reference it from the others.
+
 Rules:
 
 - Do NOT write production code in this step
@@ -63,12 +73,14 @@ Review everything you wrote and answer this question in chat:
 
 **"Are there any assumptions, unknowns, or blockers that need to be addressed before development can start?"**
 
-For each point identified:
+Raise only points that meet an ASSUMPTION DISCIPLINE escalation criterion or block development. Defaults you already chose and recorded in `assumptions.md` are not raised.
+
+For each point raised:
 1. State the assumption/unknown/blocker clearly
 2. Propose a concrete resolution or recommendation (best guess, suggested default, or decision needed from user)
 3. Flag whether it is a **blocker** (must resolve before dev) or **non-blocker** (can proceed with stated assumption)
 
-Then ask the user to confirm or correct each point before the architect phase is considered done.
+Then ask the user to confirm or correct each point before the architect phase is considered done. If nothing meets the criteria, say so and finish.
 
 Wrapper path (no interactive user; the final message uses the labelled report): blockers go under BLOCKERS, open questions under QUESTIONS, and non-blockers under ASSUMPTIONS only when they are material choices the operator should see. Do not copy `assumptions.md` into ASSUMPTIONS; list only the few items needing operator attention, or `none`.
 
