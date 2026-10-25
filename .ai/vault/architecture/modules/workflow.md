@@ -26,7 +26,7 @@ generation for every agent role, output verification, and stage routing. Everyth
   imports `ai_run.next_action`/`epic_next_action`; never mutates state.
 - `.claude/commands/*.md`, `.claude/agents/workflow-step*.md` — Claude Code wrapper: `/create-*`,
   `/start-*`, `/*-status` orchestrators plus generic per-stage worker agents (medium/high tiers); both carry the Report gate / final-report contract. Report gate adds a recommendation step on `answer` (additive, read-only draft, operator-confirmed). `/create-ticket` run id = ticket file stem, domain(s) from flags/input; `init --domains` sets them.
-  `/autopilot-ticket` (ADR-004, proposed) = unattended source-to-merged orchestrator: delegated gate policy, verification policy, audit log `${TMPDIR:-/tmp}/autopilot-<runid>.md`, Finalize commit + squash-merge into `git.base_branch`.
+  `/autopilot-ticket` (ADR-004, proposed) = unattended source-to-merged orchestrator: delegated gate policy, verification policy, audit log `${TMPDIR:-/tmp}/autopilot-<runid>.md`, Finalize commit, then push if `origin` exists, else squash-merge into `git.base_branch`.
   Installed by `install.py` via explicit `CLAUDE_MANAGED_FILES` (not whole-dir).
 - `examples/` — reference fixture projects (`mi-portal`, `pclab`, `shopify-jp`) used for manual
   validation of runner changes.
@@ -107,5 +107,5 @@ from `status.json` history (cap 2, then ask operator).
 - Never hardcode model/effort in Python; `step_models.json` keys must equal `KNOWN_PREPARE_STEPS` (test-enforced). `ai_wrap.py` stays read-only but calls `ai_run.get_step_model`.
 - `epic-generate-tickets` needs an approved breakdown review once any breakdown review/fix exists (warn-only otherwise); `epic-breakdown-complete`/`-fix-complete` share `validate_breakdown` (tracker ids <-> ticket files one-to-one); `epic_next_action` never returns `done` before breakdown review approval; no numeric sizing in prompts.
 - Recommendations are never sent without an explicit operator choice; `epic-generate-tickets` run ids stay `<EPIC>-<stem>` while `/create-ticket` uses the bare stem.
-- `/autopilot-ticket` is the only wrapper path that commits/auto-resolves gate items (Finalize only, after Confirm; never push/force/`--no-verify`/`reset --hard`/branch deletion; `.ai/runs/` never committed; cap 2 per stage, escalate by default). `CLAUDE_MANAGED_FILES` = 10.
+- `/autopilot-ticket` is the only wrapper path that commits/auto-resolves gate items (Finalize only, after Confirm; never force-push (single plain Finalize push to `origin` only)/`--no-verify`/`reset --hard`/branch deletion; `.ai/runs/` never committed; cap 2 per stage, escalate by default). `CLAUDE_MANAGED_FILES` = 10.
 - Multi-domain tickets: distill refreshes only the primary domain's module doc.

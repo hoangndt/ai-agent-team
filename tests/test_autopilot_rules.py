@@ -109,7 +109,8 @@ class AutopilotRules(unittest.TestCase):
             "Distill `[BLOCK]` or a second `distill_prepare`",
             "third delegated pause occurs on one stage",
             "already-deferred verification",
-            "detached HEAD or missing base branch",
+            "detached HEAD, a missing base branch (local mode)",
+            "a rejected or failing push (push mode)",
             "a staged-path guard hit",
             "a merge conflict",
             "a hook failure",
@@ -190,9 +191,13 @@ class AutopilotRules(unittest.TestCase):
             "subject `feat(<TICKET>): <one-line summary>`",
             "Decision log and Deferred verifications",
             "`git checkout <base>`",
+            "**push mode** when `git remote get-url origin` succeeds, else **local mode**",
+            "plain `git push origin <branch>`",
+            "Never force.",
+            "`git rev-list @{u}..HEAD` is empty",
             "`git merge --squash <branch>`",
             "The feature branch is kept.",
-            "the step 4 commit is the final state; nothing to merge",
+            "Local mode, `branch == base`: the step 4 commit is the final state; nothing to merge",
             "re-derive the state from `git branch --show-current` and `git status --porcelain`",
             "`git rev-list <base>..<branch>` is empty",
             "skip the squash commit when nothing is staged after the squash",
@@ -212,7 +217,7 @@ class AutopilotRules(unittest.TestCase):
     def test_forbidden_commands(self):
         hard = self.text.split("## Hard rules")[1].split("\n## ")[0]
         for marker in (
-            "Never `git push`",
+            "Never `git push` except the single plain Finalize push",
             "`--force`",
             "`--no-verify`",
             "`reset --hard`",

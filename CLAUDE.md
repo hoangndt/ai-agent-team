@@ -137,7 +137,7 @@ Use `python .ai/bin/ai_run.py next <TICKET> --run-auto` to auto-advance **and** 
 
 # 💬 Claude Slash Commands (optional wrapper)
 
-`.claude/commands/` + `.claude/agents/workflow-step*.md` let one Claude session drive the same workflow: `/create-ticket`, `/start-ticket`, `/autopilot-ticket` (unattended create + drive + commit + squash-merge under standing operator authority; it loads the two ticket commands and overrides only their operator questions), `/ticket-status`, `/create-epic`, `/start-epic`, `/epic-status`. Each stage runs in a fresh sub-agent that reads the same generated prompt file; `ai_run.py` still owns state. `.ai/bin/ai_wrap.py` is a read-only helper (`next|epic-next <ID> --json`, `validate-id`). The orchestrator never edits files under `.ai/runs/` or `.ai/epics/` and never commits. The WezTerm flow above is unchanged.
+`.claude/commands/` + `.claude/agents/workflow-step*.md` let one Claude session drive the same workflow: `/create-ticket`, `/start-ticket`, `/autopilot-ticket` (unattended create + drive + commit + push, or squash-merge when no `origin`, under standing operator authority; it loads the two ticket commands and overrides only their operator questions), `/ticket-status`, `/create-epic`, `/start-epic`, `/epic-status`. Each stage runs in a fresh sub-agent that reads the same generated prompt file; `ai_run.py` still owns state. `.ai/bin/ai_wrap.py` is a read-only helper (`next|epic-next <ID> --json`, `validate-id`). The orchestrator never edits files under `.ai/runs/` or `.ai/epics/` and never commits. The WezTerm flow above is unchanged.
 
 ---
 
