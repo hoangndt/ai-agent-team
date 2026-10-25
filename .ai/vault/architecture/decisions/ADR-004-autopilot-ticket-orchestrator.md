@@ -12,7 +12,7 @@ supersedes: ""
 
 ## Decision
 
-Add `/autopilot-ticket` in the wrapper layer: standing operator authority replaces questions with a delegated gate policy (narrow auto-resolve, escalate by default, cap 2 per stage) and a verification policy; every decision is appended to a durable audit log (`${TMPDIR:-/tmp}/autopilot-<runid>.md`); Finalize commits and squash-merges into `git.base_branch` only after Confirm.
+Add `/autopilot-ticket` in the wrapper layer: standing operator authority replaces questions with a delegated gate policy (narrow auto-resolve, escalate by default, cap 2 per stage) and a verification policy; every decision is appended to a durable audit log (`${TMPDIR:-/tmp}/autopilot-<runid>.md`); Finalize commits only after Confirm, then pushes the current branch when `origin` exists, else squash-merges into `git.base_branch`.
 
 ## Alternatives
 
@@ -21,4 +21,4 @@ Add `/autopilot-ticket` in the wrapper layer: standing operator authority replac
 
 ## Consequences
 
-Waiver/no-commit invariants are relaxed only inside `/autopilot-ticket`; never push/force/`--no-verify`/`reset --hard`/branch deletion; `.ai/runs/` never committed.
+Waiver/no-commit invariants are relaxed only inside `/autopilot-ticket`; never force-push (only the single plain Finalize push to `origin`)/`--no-verify`/`reset --hard`/branch deletion; `.ai/runs/` never committed.
