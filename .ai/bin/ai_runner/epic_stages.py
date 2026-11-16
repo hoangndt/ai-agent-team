@@ -22,7 +22,7 @@ from .state import (
 )
 from .context import file_ref_list, next_adr_id, vault_root
 from .epic_breakdown_checks import (
-    breakdown_review_started, parse_ticket_domains, validate_breakdown,
+    breakdown_review_started, parse_ticket_domains, ticket_run_id, validate_breakdown,
 )
 from .prompts import build_epic_review_fix_context, build_epic_role_prompt
 
@@ -799,7 +799,7 @@ def epic_generate_tickets(epic: str, init_dirs: bool = False) -> None:
     created = skipped = errors = 0
     for tf in ticket_files:
         ticket_id = tf.stem
-        run_ticket = f"{epic}-{ticket_id}"
+        run_ticket = ticket_run_id(epic, ticket_id)
         target = input_file(run_ticket)
         content = tf.read_text(encoding="utf-8")
 

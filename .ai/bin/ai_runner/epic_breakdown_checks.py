@@ -14,6 +14,19 @@ from .context import get_epic_domains
 
 TICKET_NAME_RE = re.compile(r"^EPIC-\d+-([A-Z]+-\d+)-.+\.md$", re.IGNORECASE)
 
+_TICKET_STEM_PREFIX_RE = re.compile(r"^EPIC-\d+-", re.IGNORECASE)
+
+
+def ticket_run_id(epic: str, stem: str) -> str:
+    """Run id for a ticket file stem.
+
+    Ticket stems already carry the short `EPIC-NNN-` prefix that the ticket-side
+    regexes expect, so the stem is the run id. The epic id may be a longer slug
+    (e.g. `epic-001-some-name`) and must not be prepended. Stems without the
+    prefix keep the legacy `<epic>-<stem>` form.
+    """
+    return stem if _TICKET_STEM_PREFIX_RE.match(stem) else f"{epic}-{stem}"
+
 TRACKER_ROW_RE = re.compile(r"^\|\s*([A-Za-z]+-\d+)\s*\|")
 
 CHECKLIST_ITEM_RE = re.compile(r"^[-*]\s*\[[ xX]\]")
@@ -206,12 +219,12 @@ def breakdown_review_started(epic: str) -> bool:
 
 
 def seeded_ticket_runs(epic: str) -> List[str]:
-    """Run ids (`<EPIC>-<ticket stem>`) of tickets already seeded into the ticket workflow."""
+    """Run ids (see `ticket_run_id`) of tickets already seeded into the ticket workflow."""
     tickets_dir = epic_tickets_dir(epic)
     if not tickets_dir.exists():
         return []
     return [
-        f"{epic}-{tf.stem}"
+        ticket_run_id(epic, tf.stem)
         for tf in sorted(tickets_dir.glob("*.md"))
-        if run_path(f"{epic}-{tf.stem}").is_dir()
+        if run_path(ticket_run_id(epic, tf.stem)).is_dir()
     ]
