@@ -54,9 +54,11 @@ CLAUDE_MANAGED_FILES = [
     Path(".claude/commands/start-epic.md"),
     Path(".claude/commands/epic-status.md"),
     Path(".claude/commands/autopilot-ticket.md"),
+    Path(".claude/commands/review-pr.md"),
     Path(".claude/agents/workflow-step.md"),
     Path(".claude/agents/workflow-step-medium.md"),
     Path(".claude/agents/workflow-step-high.md"),
+    Path(".claude/agents/pr-reviewer.md"),
 ]
 
 # Vault content: project-owned, scaffolded on fresh install, skipped on upgrade.

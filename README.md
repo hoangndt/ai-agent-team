@@ -51,10 +51,10 @@ python3 install.py --target /path/to/my-project --global-claude
 What this does:
 
 - `--target` installs the engine into the project: `.ai/bin/`, `.ai/agents/`, `.ai/templates/` (managed, overwritten on every install) plus project-owned starter files (`.ai/project_config.json`, `.ai/step_models.json`, `.ai/CLAUDE.md`, vault skeleton) that are created only if missing.
-- `--global-claude` writes the 10 slash-command / sub-agent files to `~/.claude/commands` and `~/.claude/agents` once, instead of into every project's `.claude/`. It asks for confirmation separately because it writes outside the project (add `--yes` to skip all prompts).
+- `--global-claude` writes the 12 slash-command / sub-agent files to `~/.claude/commands` and `~/.claude/agents` once, instead of into every project's `.claude/`. It asks for confirmation separately because it writes outside the project (add `--yes` to skip all prompts).
 - The commands call `.ai/bin/ai_wrap.py` and `ai_run.py` by relative path, so **every project still needs its own `.ai/`**; the global install only shares the commands.
 
-Prefer per-project commands? Drop `--global-claude`: the same 10 files go into `my-project/.claude/` instead. Project-level copies override global ones with the same name.
+Prefer per-project commands? Drop `--global-claude`: the same 12 files go into `my-project/.claude/` instead. Project-level copies override global ones with the same name.
 
 Installer options:
 
@@ -80,7 +80,7 @@ What lands in your project:
 | `.ai/CLAUDE.md` | project-owned operating guide | kept if it exists |
 | `.ai/vault/architecture/{system-overview.md, modules/_domain.template.md, decisions/ADR-NNN-template.md}` | project-owned skeleton | kept if it exists |
 | `.ai/skills/...` | only with `--with-skills` | existing files kept |
-| `.claude/commands/{create,start}-{ticket,epic}.md`, `{ticket,epic}-status.md`, `autopilot-ticket.md`, `.claude/agents/workflow-step*.md` | managed (10 files); in `~/.claude` with `--global-claude` | overwritten; other files in `.claude/` are never touched |
+| `.claude/commands/{create,start}-{ticket,epic}.md`, `{ticket,epic}-status.md`, `autopilot-ticket.md`, `review-pr.md`, `.claude/agents/workflow-step*.md`, `.claude/agents/pr-reviewer.md` | managed (12 files); in `~/.claude` with `--global-claude` | overwritten; other files in `.claude/` are never touched |
 
 Your project's root `CLAUDE.md` is handled later by `arch-init`.
 
@@ -152,6 +152,7 @@ Slash commands orchestrate from **one** Claude Code session. Each stage (Archite
 | `/start-ticket <TICKET> [--until <stage>]` | drives the whole pipeline, resumable. `--until`: `architect`, `architect-review`, `dev`, `review`, `qa`, `distill` |
 | `/autopilot-ticket <source> [--domain d] [--domains a,b]` | unattended create + drive + verify + commit + push (or squash-merge when no `origin`) of one ticket; see [Autopilot](#autopilot-unattended-ticket) |
 | `/ticket-status <TICKET>` | read-only state and next step |
+| `/review-pr <PR link \| PR number \| branch> [--comment]` | standalone, stateless review (no run folder): one `pr-reviewer` under 150 changed lines, else 3 read-only specialists in parallel (correctness, security, tests/scope); merged report with one decision and, when the repo has `.ai/`, an architecture conformance section (recommend-only). `--comment` posts the report to the PR after confirmation |
 | `/create-epic <source> [--domains a,b]` | inline text / Shortcut / Jira, then `epic-init` |
 | `/start-epic <EPIC> [--until <stage>]` | analysis, design, review (with fix loop), ADR distill, breakdown; then asks before `epic-generate-tickets` and lists `/start-ticket` commands (starts none) |
 | `/epic-status <EPIC>` | read-only |
@@ -436,7 +437,7 @@ python3 .ai/bin/ai_run.py arch-refresh-prepare | arch-refresh-complete
 
 # Claude slash commands (inside Claude Code)
 /create-ticket <source> [--domain d] [--domains a,b]    /start-ticket <TICKET> [--until stage]    /ticket-status <TICKET>
-/autopilot-ticket <source> [--domain d] [--domains a,b]
+/autopilot-ticket <source> [--domain d] [--domains a,b]   /review-pr <PR link|number|branch> [--comment]
 /create-epic <source> [--domains a,b]   /start-epic <EPIC> [--until stage]        /epic-status <EPIC>
 
 # runner CLI (advanced)
